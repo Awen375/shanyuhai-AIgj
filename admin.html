@@ -24,7 +24,7 @@
         .hidden { display: none; }
         #loginBox { max-width: 350px; margin: 100px auto; }
         .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 999; align-items: center; justify-content: center; }
-        .modal-content { background: white; border-radius: 20px; padding: 25px; max-width: 500px; width: 90%; text-align: center; }
+        .modal-content { background: white; border-radius: 20px; padding: 25px; max-width: 800px; width: 90%; max-height: 80vh; overflow-y: auto; }
         .modal-content img { max-width: 250px; margin: 15px auto; display: block; }
         .collapse-icon { float: right; transition: transform 0.3s; }
         .collapsed .collapse-icon { transform: rotate(-90deg); }
@@ -98,23 +98,40 @@
             </div>
         </div>
 
-        <!-- 聊天记录 -->
+        <!-- 聊天记录（新设计） -->
         <div class="card">
-            <h2 onclick="togglePanel('chatPanel')">💬 聊天记录 <span class="collapse-icon">▼</span></h2>
+            <h2 onclick="togglePanel('chatPanel')">💬 聊天记录（按房间） <span class="collapse-icon">▼</span></h2>
             <div id="chatPanel" style="display:none;">
-                <button onclick="loadChatLogs()">🔄 刷新</button>
-                <button onclick="clearChatLogs()" class="danger">🗑 清空</button>
-                <table id="chatTable">
-                    <thead><tr><th>时间</th><th>房间</th><th>问题</th><th>回复</th><th>操作</th></tr></thead>
+                <table id="chatSummaryTable">
+                    <thead><tr><th>房间</th><th>最后聊天时间</th><th>总记录</th><th>操作</th></tr></thead>
                     <tbody></tbody>
                 </table>
             </div>
         </div>
     </div>
 
+    <!-- 聊天详情弹窗 -->
+    <div id="chatDetailModal" class="modal-overlay">
+        <div class="modal-content">
+            <h3>房间 <span id="detailRoom"></span> 聊天记录</h3>
+            <div class="flex-row">
+                <label>日期筛选：</label>
+                <select id="detailDateSelect">
+                    <option value="">全部</option>
+                </select>
+                <button onclick="loadRoomDetail()">查询</button>
+                <button onclick="document.getElementById('chatDetailModal').style.display='none'" style="background:#ccc;">关闭</button>
+            </div>
+            <table>
+                <thead><tr><th>时间</th><th>问题</th><th>回复</th><th>操作</th></tr></thead>
+                <tbody id="detailTableBody"></tbody>
+            </table>
+        </div>
+    </div>
+
     <!-- 二维码弹窗 -->
     <div id="qrModal" class="modal-overlay">
-        <div class="modal-content">
+        <div class="modal-content" style="text-align:center;">
             <h3>房间 <span id="qrRoom"></span> 二维码</h3>
             <img id="qrImage" />
             <p>链接: <span id="qrUrl"></span></p>
@@ -196,7 +213,6 @@
             const data = await res.json();
             if (data.success) {
                 alert('二维码已更新！');
-                // 自动显示新二维码
                 const newUrl = `${location.origin}/room-chat.html?room=${id}&token=${data.token}`;
                 showQR(id, newUrl);
                 loadRooms();
@@ -281,48 +297,83 @@
             loadUnanswered();
         }
 
-        // ===== 聊天记录 =====
-        async function loadChatLogs() {
-            const res = await fetch('/api/admin/chatlogs', { headers: { 'x-admin-token': token() } });
+        // ===== 聊天记录（按房间） =====
+        async function loadChatSummary() {
+            const res = await fetch('/api/admin/chat-summary', { headers: { 'x-admin-token': token() } });
             const data = await res.json();
-            const tbody = document.querySelector('#chatTable tbody');
+            const tbody = document.querySelector('#chatSummaryTable tbody');
             tbody.innerHTML = '';
-            if (data.logs) {
+            if (data.summary && data.summary.length) {
+                data.summary.forEach(item => {
+                    tbody.innerHTML += `<tr>
+                        <td>${item.room}</td>
+                        <td>${new Date(item.lastTime).toLocaleString()}</td>
+                        <td>${item.total}</td>
+                        <td><button onclick="openRoomChat('${item.room}')">📋 查看详情</button></td>
+                    </tr>`;
+                });
+            } else {
+                tbody.innerHTML = '<tr><td colspan="4">暂无聊天记录</td></tr>';
+            }
+        }
+
+        async function openRoomChat(room) {
+            document.getElementById('detailRoom').innerText = room;
+            // 加载可用日期
+            const res = await fetch(`/api/admin/chatlogs?room=${room}`, { headers: { 'x-admin-token': token() } });
+            const data = await res.json();
+            const dates = new Set();
+            data.logs.forEach(log => {
+                const d = new Date(log.time).toISOString().slice(0, 10);
+                dates.add(d);
+            });
+            const select = document.getElementById('detailDateSelect');
+            select.innerHTML = '<option value="">全部</option>';
+            Array.from(dates).sort().reverse().forEach(d => {
+                select.innerHTML += `<option value="${d}">${d}</option>`;
+            });
+            // 默认加载全部
+            loadRoomDetail();
+            document.getElementById('chatDetailModal').style.display = 'flex';
+        }
+
+        async function loadRoomDetail() {
+            const room = document.getElementById('detailRoom').innerText;
+            const date = document.getElementById('detailDateSelect').value;
+            const res = await fetch(`/api/admin/chatlogs?room=${room}&date=${date}`, { headers: { 'x-admin-token': token() } });
+            const data = await res.json();
+            const tbody = document.getElementById('detailTableBody');
+            tbody.innerHTML = '';
+            if (data.logs && data.logs.length) {
                 data.logs.forEach(log => {
                     tbody.innerHTML += `<tr>
                         <td>${new Date(log.time).toLocaleString()}</td>
-                        <td>${log.room || ''}</td>
-                        <td title="${log.question}">${log.question.substring(0,20)}...</td>
-                        <td title="${log.reply}">${log.reply.substring(0,20)}...</td>
+                        <td>${log.question.substring(0, 20)}...</td>
+                        <td>${log.reply.substring(0, 30)}...</td>
                         <td><button onclick="deleteChatLog('${log.id}')" class="danger">删除</button></td>
                     </tr>`;
                 });
+            } else {
+                tbody.innerHTML = '<tr><td colspan="4">无记录</td></tr>';
             }
         }
 
         async function deleteChatLog(id) {
+            if (!confirm('确定删除这条聊天记录？')) return;
             await fetch('/api/admin/chatlogs', {
                 method: 'DELETE',
                 headers: { 'Content-Type': 'application/json', 'x-admin-token': token() },
                 body: JSON.stringify({ id })
             });
-            loadChatLogs();
-        }
-
-        async function clearChatLogs() {
-            if (!confirm('确定清空所有聊天记录？')) return;
-            await fetch('/api/admin/chatlogs/clear', {
-                method: 'POST',
-                headers: { 'x-admin-token': token() }
-            });
-            loadChatLogs();
+            loadRoomDetail();
+            loadChatSummary(); // 刷新汇总
         }
 
         async function loadAll() {
             loadRooms();
             loadAISettings();
             loadUnanswered();
-            loadChatLogs();
+            loadChatSummary();
         }
     </script>
 </body>
