@@ -5,12 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>山予海AI管家前台端</title>
     <link rel="icon" type="image/png" href="/favicon.png">
+    <!-- QRCode.js 库 -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
     <style>
         body { 
             font-family: 'PingFang SC','Microsoft YaHei',sans-serif; 
-            /* 更换背景：渐变或图片 */
             background: linear-gradient(135deg, #0b4f6c 0%, #1e90ff 100%);
-            /* 若使用图片，替换为： background: url('/bg.jpg') center/cover no-repeat; */
             display: flex; justify-content: center; align-items: center; 
             min-height: 100vh; padding: 20px; 
         }
@@ -39,6 +39,14 @@
         .type-card:hover { background: #e8f4fd; }
         .type-card .label { font-size: 14px; color: #555; margin-bottom: 8px; }
         .type-card .count { font-size: 32px; font-weight: 700; color: #0b4f6c; }
+
+        .qr-entry-btn {
+            position: absolute; top: 20px; right: 20px;
+            background: #1e90ff; color: white; border: none;
+            padding: 8px 16px; border-radius: 25px;
+            font-size: 14px; cursor: pointer; font-weight: 600;
+        }
+
         .modal-overlay { 
             display: none; position: fixed; top: 0; left: 0; 
             width: 100%; height: 100%; background: rgba(0,0,0,0.5); 
@@ -46,7 +54,7 @@
         }
         .modal-content { 
             background: white; border-radius: 20px; padding: 25px; 
-            width: 90%; max-width: 500px; max-height: 70vh; overflow-y: auto; 
+            width: 90%; max-width: 800px; max-height: 80vh; overflow-y: auto; 
         }
         table { width: 100%; border-collapse: collapse; font-size: 14px; }
         th, td { border-bottom: 1px solid #eee; padding: 10px 6px; text-align: left; }
@@ -72,11 +80,22 @@
             margin-top: 5px;
             text-align: center;
         }
+
+        .room-qr-item {
+            text-align: center;
+            margin: 15px 0;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 15px;
+        }
+        /* 隐藏二维码生成容器 */
+        .qr-canvas-box {
+            display: none;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <!-- 登录界面（唯一） -->
+        <!-- 登录界面 -->
         <div id="loginPanel" class="login-box">
             <img src="/logo.jpg" alt="logo" class="logo-icon" style="width: 80px; height: auto;" />
             <h2>山予海AI管家前台端</h2>
@@ -85,8 +104,9 @@
             <p id="loginMsg" style="color:red;"></p>
         </div>
 
-        <!-- 数据看板（登录后显示） -->
+        <!-- 数据看板 -->
         <div id="dashboardPanel" class="dashboard hidden">
+            <button class="qr-entry-btn" onclick="openQRPanel()">客房二维码</button>
             <img src="/logo.jpg" alt="logo" class="logo-icon" style="width: 80px; height: auto;" />
             <h2>山予海AI管家前台端</h2>
             <div class="card-row">
@@ -115,19 +135,27 @@
                     <div class="count" id="cnt_extend">0</div>
                 </div>
             </div>
-
             <div class="support-text">本程序由，山予海AI大模型团队提供技术支持</div>
             <div class="today-stats-link" onclick="openTodayStats()">📊 今日处理统计</div>
         </div>
     </div>
 
-    <!-- 列表弹窗（共用） -->
+    <!-- 通知列表弹窗 -->
     <div id="listModal" class="modal-overlay">
         <div class="modal-content">
             <h4 id="listTitle"></h4>
             <button id="historyBtn" onclick="showHistory()" style="margin-bottom:10px; background:#3498db;">处理记录</button>
             <table id="notifTable"><tbody></tbody></table>
             <button onclick="document.getElementById('listModal').style.display='none'">关闭</button>
+        </div>
+    </div>
+
+    <!-- 二维码弹窗 -->
+    <div id="qrModal" class="modal-overlay">
+        <div class="modal-content">
+            <h3>房间二维码管理</h3>
+            <div id="qrRoomList"></div>
+            <button onclick="document.getElementById('qrModal').style.display='none'">关闭</button>
         </div>
     </div>
 
@@ -138,6 +166,11 @@
         const PASSWORD = () => localStorage.getItem('front_password') || '';
         const BASE = '/api/frontdesk';
 
+        // 预加载 logo 图片
+        const logoImg = new Image();
+        logoImg.src = '/logo.jpg';
+
+        // ===== 语音播报 =====
         async function speak(text) {
             if (!('speechSynthesis' in window)) return;
             window.speechSynthesis.cancel();
@@ -145,7 +178,6 @@
             utter.lang = 'zh-CN';
             utter.rate = 1.0;
             utter.pitch = 1.0;
-
             try {
                 const res = await fetch(`${BASE}/voice?password=${encodeURIComponent(PASSWORD())}`);
                 const data = await res.json();
@@ -155,11 +187,8 @@
                     if (selected) utter.voice = selected;
                 }
             } catch (e) {}
-
             if (window.speechSynthesis.getVoices().length === 0) {
-                window.speechSynthesis.onvoiceschanged = () => {
-                    speak(text);
-                };
+                window.speechSynthesis.onvoiceschanged = () => { speak(text); };
                 return;
             }
             window.speechSynthesis.speak(utter);
@@ -182,13 +211,10 @@
             }
         }
 
+        // ===== 数据更新（保持不变） =====
         function countByType(notifications) {
             const counts = { urgent:0, clean:0, car:0, food:0, extend:0 };
-            if (notifications) {
-                notifications.forEach(n => {
-                    if (counts.hasOwnProperty(n.type)) counts[n.type]++;
-                });
-            }
+            if (notifications) { notifications.forEach(n => { if (counts.hasOwnProperty(n.type)) counts[n.type]++; }); }
             return counts;
         }
 
@@ -196,7 +222,6 @@
             const notifications = dashboardData?.notifications || [];
             const current = countByType(notifications);
             current.usage = dashboardData?.todayRooms?.length || 0;
-
             document.getElementById('cnt_usage').innerText = current.usage;
             document.getElementById('cnt_urgent').innerText = current.urgent;
             document.getElementById('cnt_clean').innerText = current.clean;
@@ -206,41 +231,25 @@
 
             const allZero = Object.values(current).every(v => v === 0);
             if (allZero) {
-                if (alertInterval) {
-                    clearInterval(alertInterval);
-                    alertInterval = null;
-                }
+                if (alertInterval) { clearInterval(alertInterval); alertInterval = null; }
                 previousCounts = { ...current };
                 return;
             }
-
             if (!skipVoice) {
                 const changes = [];
                 for (const type of ['urgent','clean','car','food','extend']) {
-                    if (current[type] > previousCounts[type]) {
-                        changes.push(getTypeName(type) + ' ' + current[type] + ' 条');
-                    }
+                    if (current[type] > previousCounts[type]) changes.push(getTypeName(type) + ' ' + current[type] + ' 条');
                 }
-                if (changes.length > 0) {
-                    speak('收到新通知：' + changes.join('，'));
-                }
+                if (changes.length > 0) speak('收到新通知：' + changes.join('，'));
                 if (alertInterval) clearInterval(alertInterval);
                 alertInterval = setInterval(() => {
-                    if (document.getElementById('dashboardPanel').classList.contains('hidden')) {
-                        clearInterval(alertInterval);
-                        alertInterval = null;
-                        return;
-                    }
+                    if (document.getElementById('dashboardPanel').classList.contains('hidden')) { clearInterval(alertInterval); alertInterval = null; return; }
                     const nums = [];
                     for (const type of ['urgent','clean','car','food','extend']) {
                         if (current[type] > 0) nums.push(getTypeName(type) + current[type] + '条');
                     }
-                    if (nums.length > 0) {
-                        speak('待处理提醒：' + nums.join('，'));
-                    } else {
-                        clearInterval(alertInterval);
-                        alertInterval = null;
-                    }
+                    if (nums.length > 0) speak('待处理提醒：' + nums.join('，'));
+                    else { clearInterval(alertInterval); alertInterval = null; }
                 }, 30000);
             }
             previousCounts = { ...current };
@@ -256,14 +265,7 @@
             document.getElementById('listTitle').innerText = '今日使用房间';
             document.getElementById('historyBtn').style.display = 'none';
             const tbody = document.querySelector('#notifTable tbody');
-            tbody.innerHTML = '';
-            if (rooms.length > 0) {
-                rooms.forEach(room => {
-                    tbody.innerHTML += `<tr><td>${room}</td></tr>`;
-                });
-            } else {
-                tbody.innerHTML = '<tr><td>暂无房间使用</td></tr>';
-            }
+            tbody.innerHTML = rooms.length > 0 ? rooms.map(r => `<tr><td>${r}</td></tr>`).join('') : '<tr><td>暂无房间使用</td></tr>';
             document.getElementById('listModal').style.display = 'flex';
         }
 
@@ -282,11 +284,7 @@
             tbody.innerHTML = '';
             if (data.notifications && data.notifications.length) {
                 data.notifications.forEach(n => {
-                    tbody.innerHTML += `<tr>
-                        <td>${n.room}</td>
-                        <td>${n.question}</td>
-                        <td><button onclick="handleNotif('${n.id}')" class="success">处理完成</button></td>
-                    </tr>`;
+                    tbody.innerHTML += `<tr><td>${n.room}</td><td>${n.question}</td><td><button onclick="handleNotif('${n.id}')" class="success">处理完成</button></td></tr>`;
                 });
             } else {
                 tbody.innerHTML = '<tr><td colspan="3">暂无数据</td></tr>';
@@ -295,11 +293,7 @@
 
         async function handleNotif(id) {
             const pass = PASSWORD();
-            await fetch(`${BASE}/notifications`, {
-                method: 'POST',
-                headers: {'Content-Type':'application/json'},
-                body: JSON.stringify({ id, password: pass })
-            });
+            await fetch(`${BASE}/notifications`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ id, password: pass }) });
             const title = document.getElementById('listTitle').innerText;
             const typeMap = { '紧急通知':'urgent', '清扫任务':'clean', '用车服务':'car', '订餐服务':'food', '续住需求':'extend' };
             const typeKey = Object.entries(typeMap).find(([k,v]) => title.includes(k))?.[1];
@@ -323,11 +317,7 @@
             tbody.innerHTML = '';
             if (data.history && data.history.length) {
                 data.history.forEach(n => {
-                    tbody.innerHTML += `<tr>
-                        <td>${n.room}</td>
-                        <td>${n.question}</td>
-                        <td>${new Date(n.resolvedAt).toLocaleString()}</td>
-                    </tr>`;
+                    tbody.innerHTML += `<tr><td>${n.room}</td><td>${n.question}</td><td>${new Date(n.resolvedAt).toLocaleString()}</td></tr>`;
                 });
             } else {
                 tbody.innerHTML = '<tr><td colspan="3">暂无处理记录</td></tr>';
@@ -340,18 +330,13 @@
             const data = await res.json();
             const todayStr = new Date().toISOString().slice(0, 10);
             const todayItems = (data.history || []).filter(n => n.resolvedAt && n.resolvedAt.startsWith(todayStr));
-            
             document.getElementById('listTitle').innerText = '今日处理统计';
             document.getElementById('historyBtn').style.display = 'none';
             const tbody = document.querySelector('#notifTable tbody');
             tbody.innerHTML = '';
             if (todayItems.length > 0) {
                 todayItems.forEach(n => {
-                    tbody.innerHTML += `<tr>
-                        <td>${n.room}</td>
-                        <td>${n.question}</td>
-                        <td>${new Date(n.resolvedAt).toLocaleString()}</td>
-                    </tr>`;
+                    tbody.innerHTML += `<tr><td>${n.room}</td><td>${n.question}</td><td>${new Date(n.resolvedAt).toLocaleString()}</td></tr>`;
                 });
             } else {
                 tbody.innerHTML = '<tr><td colspan="3">今日暂无处理记录</td></tr>';
@@ -374,6 +359,134 @@
                 if (document.getElementById('dashboardPanel').classList.contains('hidden')) return;
                 updateDashboard();
             }, 60000);
+        }
+
+        // ===== 二维码生成（带logo，使用 QRCode.js） =====
+        async function openQRPanel() {
+            document.getElementById('qrModal').style.display = 'flex';
+            await loadRoomQRs();
+        }
+
+        async function loadRoomQRs() {
+            const pass = PASSWORD();
+            const res = await fetch(`/api/frontdesk/rooms?password=${encodeURIComponent(pass)}`);
+            const data = await res.json();
+            const container = document.getElementById('qrRoomList');
+            container.innerHTML = '';
+
+            if (data.rooms && data.rooms.length > 0) {
+                for (const room of data.rooms) {
+                    const url = `${location.origin}/room-chat.html?room=${room.id}&token=${room.token}`;
+                    // 为每个房间创建一个包含 canvas 的容器
+                    const wrapper = document.createElement('div');
+                    wrapper.className = 'room-qr-item';
+                    wrapper.id = `qr_item_${room.id}`;
+                    wrapper.innerHTML = `
+                        <strong>${room.name || room.id}</strong>
+                        <div class="qr-canvas-box" id="qr_canvas_${room.id}"></div>
+                        <img id="qr_img_${room.id}" style="max-width:200px; margin:10px auto; display:block;" />
+                        <p style="font-size:12px; color:#888;" id="qr_url_${room.id}">${url}</p>
+                        <button onclick="refreshRoomQR('${room.id}')" class="warning" style="margin-right:5px;">🔄 刷新</button>
+                        <button onclick="saveQR('${room.id}')" class="success">💾 保存</button>
+                    `;
+                    container.appendChild(wrapper);
+
+                    // 生成二维码并叠加 logo
+                    await generateQRWithLogo(room.id, url);
+                }
+            } else {
+                container.innerHTML = '<p>暂无房间</p>';
+            }
+        }
+
+        async function generateQRWithLogo(roomId, url) {
+            const canvasContainer = document.getElementById(`qr_canvas_${roomId}`);
+            const imgDisplay = document.getElementById(`qr_img_${roomId}`);
+
+            // 清除旧内容
+            canvasContainer.innerHTML = '';
+
+            // 使用 QRCode.js 生成二维码 (纠错级别 H，尺寸 200x200)
+            new QRCode(canvasContainer, {
+                text: url,
+                width: 200,
+                height: 200,
+                colorDark: "#000000",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.H
+            });
+
+            // 等待 canvas 生成（异步，需要稍微延迟）
+            setTimeout(() => {
+                const canvas = canvasContainer.querySelector('canvas');
+                if (!canvas) {
+                    // 如果失败，尝试再次获取
+                    setTimeout(() => {
+                        const retryCanvas = canvasContainer.querySelector('canvas');
+                        if (retryCanvas) drawLogoOnCanvas(retryCanvas, roomId, imgDisplay);
+                    }, 200);
+                    return;
+                }
+                drawLogoOnCanvas(canvas, roomId, imgDisplay);
+            }, 300);
+        }
+
+        function drawLogoOnCanvas(canvas, roomId, imgDisplay) {
+            const ctx = canvas.getContext('2d');
+            // 等待 logo 加载完成
+            if (logoImg.complete && logoImg.naturalWidth > 0) {
+                drawLogo();
+            } else {
+                logoImg.onload = drawLogo;
+            }
+
+            function drawLogo() {
+                // 清除之前的绘制（实际上 canvas 刚生成，不需要清除）
+                const size = canvas.width;
+                const logoSize = Math.floor(size * 0.25); // 占 25%，可扫描
+                const x = (size - logoSize) / 2;
+                const y = (size - logoSize) / 2;
+                // 白色背景圆角矩形（遮罩）
+                ctx.fillStyle = 'white';
+                ctx.beginPath();
+                ctx.arc(size/2, size/2, logoSize/2 + 4, 0, Math.PI*2);
+                ctx.fill();
+                // 绘制 logo
+                ctx.drawImage(logoImg, x, y, logoSize, logoSize);
+                // 转换为图片显示
+                imgDisplay.src = canvas.toDataURL('image/png');
+            }
+        }
+
+        async function refreshRoomQR(roomId) {
+            if (!confirm('确定刷新该房间二维码？旧码将立即失效。')) return;
+            const pass = PASSWORD();
+            const res = await fetch(`/api/frontdesk/refresh-room`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: roomId, password: pass })
+            });
+            const data = await res.json();
+            if (data.success) {
+                const url = `${location.origin}/room-chat.html?room=${roomId}&token=${data.token}`;
+                // 更新链接显示
+                const urlEl = document.getElementById(`qr_url_${roomId}`);
+                if (urlEl) urlEl.innerText = url;
+                // 重新生成二维码
+                await generateQRWithLogo(roomId, url);
+                alert('二维码已刷新');
+            } else {
+                alert('刷新失败：' + (data.error || '未知错误'));
+            }
+        }
+
+        function saveQR(roomId) {
+            const img = document.getElementById(`qr_img_${roomId}`);
+            if (!img || !img.src) return;
+            const link = document.createElement('a');
+            link.href = img.src;
+            link.download = `房间${roomId}二维码.png`;
+            link.click();
         }
     </script>
 </body>
