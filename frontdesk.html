@@ -88,39 +88,32 @@
             <div class="logo">🌊</div>
             <h2>山予海AI管家前台端</h2>
             <div class="card-row">
-                <!-- 今日AI管家使用 -->
                 <div class="type-card" onclick="openUsageList()">
                     <div class="label">今日AI管家使用</div>
                     <div class="count" id="cnt_usage">0</div>
                 </div>
-                <!-- 紧急通知 -->
                 <div class="type-card" onclick="openNotifyList('urgent')">
                     <div class="label">紧急通知</div>
                     <div class="count" id="cnt_urgent">0</div>
                 </div>
-                <!-- 清扫任务 -->
                 <div class="type-card" onclick="openNotifyList('clean')">
                     <div class="label">清扫任务</div>
                     <div class="count" id="cnt_clean">0</div>
                 </div>
-                <!-- 用车服务 -->
                 <div class="type-card" onclick="openNotifyList('car')">
                     <div class="label">用车服务</div>
                     <div class="count" id="cnt_car">0</div>
                 </div>
-                <!-- 订餐服务 -->
                 <div class="type-card" onclick="openNotifyList('food')">
                     <div class="label">订餐服务</div>
                     <div class="count" id="cnt_food">0</div>
                 </div>
-                <!-- 续住需求 -->
                 <div class="type-card" onclick="openNotifyList('extend')">
                     <div class="label">续住需求</div>
                     <div class="count" id="cnt_extend">0</div>
                 </div>
             </div>
 
-            <!-- 底部技术支持与统计 -->
             <div class="support-text">本程序由，山予海AI大模型团队提供技术支持</div>
             <div class="today-stats-link" onclick="openTodayStats()">📊 今日处理统计</div>
         </div>
@@ -143,13 +136,31 @@
         const PASSWORD = () => localStorage.getItem('front_password') || '';
         const BASE = '/api/frontdesk';
 
-        function speak(text) {
-            if ('speechSynthesis' in window) {
-                const utter = new SpeechSynthesisUtterance(text);
-                utter.lang = 'zh-CN';
-                utter.rate = 1.0;
-                speechSynthesis.speak(utter);
+        async function speak(text) {
+            if (!('speechSynthesis' in window)) return;
+            window.speechSynthesis.cancel();
+            const utter = new SpeechSynthesisUtterance(text);
+            utter.lang = 'zh-CN';
+            utter.rate = 1.0;
+            utter.pitch = 1.0;
+
+            try {
+                const res = await fetch(`${BASE}/voice?password=${encodeURIComponent(PASSWORD())}`);
+                const data = await res.json();
+                if (data.voice) {
+                    const voices = window.speechSynthesis.getVoices();
+                    const selected = voices.find(v => v.name === data.voice);
+                    if (selected) utter.voice = selected;
+                }
+            } catch (e) {}
+
+            if (window.speechSynthesis.getVoices().length === 0) {
+                window.speechSynthesis.onvoiceschanged = () => {
+                    speak(text);
+                };
+                return;
             }
+            window.speechSynthesis.speak(utter);
         }
 
         async function login() {
@@ -222,7 +233,6 @@
             return map[type] || '';
         }
 
-        // 今日使用房间列表
         async function openUsageList() {
             const rooms = dashboardData?.todayRooms || [];
             document.getElementById('listTitle').innerText = '今日使用房间';
@@ -239,7 +249,6 @@
             document.getElementById('listModal').style.display = 'flex';
         }
 
-        // 通知类型列表
         async function openNotifyList(type) {
             document.getElementById('listTitle').innerText = getTypeName(type) + ' 待处理列表';
             document.getElementById('historyBtn').style.display = 'inline-block';
@@ -307,14 +316,11 @@
             }
         }
 
-        // 今日处理统计（所有类型）
         async function openTodayStats() {
             const pass = PASSWORD();
-            // 请求所有已处理通知（不带type）
             const res = await fetch(`${BASE}/notifications?password=${encodeURIComponent(pass)}&history=1`);
             const data = await res.json();
             const todayStr = new Date().toISOString().slice(0, 10);
-            // 过滤今天处理的通知
             const todayItems = (data.history || []).filter(n => n.resolvedAt && n.resolvedAt.startsWith(todayStr));
             
             document.getElementById('listTitle').innerText = '今日处理统计';
