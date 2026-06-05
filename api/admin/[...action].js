@@ -133,6 +133,7 @@ export default async function handler(req, res) {
             task.answer = answer;
             task.resolvedAt = new Date().toISOString();
             await redis.set(`unanswered:${taskId}`, JSON.stringify(task));
+
             const existingKeys = await redis.keys('knowledge:*');
             let exists = false;
             for (const key of existingKeys) {
@@ -151,7 +152,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ success: true });
         }
 
-        // ===== 聊天记录 =====
+        // ===== 聊天记录汇总 =====
         if (action === 'chat-summary' && req.method === 'GET') {
             if (!checkAdmin()) return;
             const keys = await redis.keys('chat:*');
@@ -201,7 +202,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ success: true });
         }
 
-        // ===== 关键词设置（独立+类型） =====
+        // ===== 关键词设置 =====
         if (action === 'keywords' && req.method === 'GET') {
             if (!checkAdmin()) return;
             const data = await redis.get('config:keywords');
@@ -211,13 +212,13 @@ export default async function handler(req, res) {
 
         if (action === 'keywords' && req.method === 'POST') {
             if (!checkAdmin()) return;
-            const { keywords } = req.body;   // [{keyword, type}, ...]
+            const { keywords } = req.body;
             if (!Array.isArray(keywords)) return res.status(400).json({ error: '格式错误' });
             await redis.set('config:keywords', JSON.stringify(keywords));
             return res.status(200).json({ success: true });
         }
 
-        // ===== 通知列表（可按类型筛选） =====
+        // ===== 通知列表 =====
         if (action === 'notifications' && req.method === 'GET') {
             if (!checkAdmin()) return;
             const { type } = req.query;
@@ -281,6 +282,20 @@ export default async function handler(req, res) {
             const { password } = req.body;
             if (!password) return res.status(400).json({ error: '缺少密码' });
             await redis.set('config:frontdesk_password', password);
+            return res.status(200).json({ success: true });
+        }
+
+        // ===== 语音选择 =====
+        if (action === 'voice' && req.method === 'GET') {
+            if (!checkAdmin()) return;
+            const voice = await redis.get('config:voice') || '';
+            return res.status(200).json({ voice });
+        }
+
+        if (action === 'voice' && req.method === 'POST') {
+            if (!checkAdmin()) return;
+            const { voice } = req.body;
+            await redis.set('config:voice', voice);
             return res.status(200).json({ success: true });
         }
 
