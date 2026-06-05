@@ -128,27 +128,25 @@ ${knowledgeText || '暂无'}`;
         
         const data = await response.json();
         
-        // 检查 API 错误
         if (data.error) {
-            console.error('DeepSeek API 错误:', JSON.stringify(data.error));
-            return res.status(500).json({ error: 'AI 服务异常：' + data.error.message });
+            console.error('DeepSeek API error:', JSON.stringify(data.error));
+            return res.status(500).json({ error: 'AI服务异常: ' + (data.error.message || '未知错误') });
         }
         
-        if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-            console.error('DeepSeek 返回结构异常:', JSON.stringify(data));
-            return res.status(500).json({ error: 'AI 返回数据异常，请稍后重试' });
+        const content = data?.choices?.[0]?.message?.content;
+        if (!content) {
+            console.error('DeepSeek 返回空内容, 完整响应:', JSON.stringify(data));
+            return res.status(500).json({ error: 'AI 未返回有效内容，请稍后重试' });
         }
         
-        let reply = data.choices[0].message.content || '';
+        let reply = content;
 
-        // ★ 修复：只对真正“不知道”的情况触发 fallback，移除“拨打前台电话”
         const isUnsure = reply.includes('不太确定') || 
                         reply.includes('无法回答') || 
                         reply.includes('这个我不太清楚') ||
                         reply.includes('抱歉，我暂时无法');
         
-        if (isUnsure || !reply) {
-            // 记录到未回答问题
+        if (isUnsure) {
             const existingKeys = await redis.keys('unanswered:*');
             let isDuplicate = false;
             for (const key of existingKeys) {
@@ -158,7 +156,6 @@ ${knowledgeText || '暂无'}`;
                     if (e.question === question && e.status !== 'resolved') { isDuplicate = true; break; }
                 }
             }
-
             if (!isDuplicate) {
                 await redis.set(`unanswered:${Date.now()}`, JSON.stringify({
                     question,
@@ -168,7 +165,6 @@ ${knowledgeText || '暂无'}`;
                 }));
             }
 
-            // 使用后台配置的 fallback 回复
             let fallback = aiSettings.fallbackReply
                 .replace('{name}', aiSettings.name)
                 .replace('{phone}', '138xxxx1234')
@@ -181,11 +177,10 @@ ${knowledgeText || '暂无'}`;
                     .replace('{room}', room || '');
                 fallback += '\n\n' + note;
             }
-            
             reply = fallback;
         }
 
-        // 存储聊天记录（90天过期）
+        // 存储聊天记录（90天）
         const chatKey = `chat:${Date.now()}:${Math.random().toString(36).substr(2, 6)}`;
         await redis.set(chatKey, JSON.stringify({
             room: room || '未知',
@@ -194,7 +189,29 @@ ${knowledgeText || '暂无'}`;
             time: new Date().toISOString()
         }));
         await redis.expire(chatKey, 60 * 60 * 24 * 90);
-        
+
+        // 关键词匹配与通知
+        try {
+            const keywordsData = await redis.get('config:alert_keywords');
+            if (keywordsData) {
+                const keywords = typeof keywordsData === 'string' ? JSON.parse(keywordsData) : keywordsData;
+                if (Array.isArray(keywords) && keywords.length > 0) {
+                    const textToCheck = (question + ' ' + reply).toLowerCase();
+                    const matched = keywords.find(kw => textToCheck.includes(kw.toLowerCase()));
+                    if (matched) {
+                        await redis.set(`notification:${Date.now()}`, JSON.stringify({
+                            room: room || '未知',
+                            question,
+                            reply,
+                            matchedKeyword: matched,
+                            time: new Date().toISOString(),
+                            status: 'pending'
+                        }));
+                    }
+                }
+            }
+        } catch (e) {}
+
         return res.status(200).json({ reply });
     } catch (err) {
         console.error('AI Chat Error:', err);
