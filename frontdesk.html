@@ -202,6 +202,18 @@
             document.getElementById('cnt_food').innerText = current.food;
             document.getElementById('cnt_extend').innerText = current.extend;
 
+            // 检查是否所有通知都已处理
+            const allZero = Object.values(current).every(v => v === 0);
+            if (allZero) {
+                if (alertInterval) {
+                    clearInterval(alertInterval);
+                    alertInterval = null;
+                }
+                // 重置计数，避免下次误判增量
+                previousCounts = { ...current };
+                return;
+            }
+
             if (!skipVoice) {
                 const changes = [];
                 for (const type of ['urgent','clean','car','food','extend']) {
@@ -289,7 +301,8 @@
                 await loadNotifications(typeKey);
                 const res = await fetch(BASE + '?password=' + encodeURIComponent(pass));
                 dashboardData = await res.json();
-                updateDashboard();
+                // 强制刷新并允许检查播报关闭
+                updateDashboard(false);
             }
         }
 
