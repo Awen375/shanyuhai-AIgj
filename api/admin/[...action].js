@@ -196,7 +196,6 @@ export default async function handler(req, res) {
             return res.status(200).json({ summary });
         }
 
-        // 聊天详情
         if (action === 'chatlogs' && req.method === 'GET') {
             if (!checkAdmin()) return;
             const { room, date } = req.query;
@@ -274,6 +273,36 @@ export default async function handler(req, res) {
             notif.status = 'done';
             notif.resolvedAt = new Date().toISOString();
             await redis.set(`notification:${id}`, JSON.stringify(notif));
+            return res.status(200).json({ success: true });
+        }
+
+        if (action === 'notifications-history' && req.method === 'GET') {
+            if (!checkAdmin()) return;
+            const keys = await redis.keys('notification:*');
+            const items = [];
+            for (const key of keys) {
+                const data = await redis.get(key);
+                if (data) {
+                    const notif = typeof data === 'string' ? JSON.parse(data) : data;
+                    if (notif.status === 'done') items.push({ id: key.replace('notification:', ''), ...notif });
+                }
+            }
+            items.sort((a, b) => new Date(b.resolvedAt) - new Date(a.resolvedAt));
+            return res.status(200).json({ history: items });
+        }
+
+        // ===== 前台端设置 =====
+        if (action === 'frontdesk-password' && req.method === 'GET') {
+            if (!checkAdmin()) return;
+            const pwd = await redis.get('config:frontdesk_password') || '1234';
+            return res.status(200).json({ password: pwd });
+        }
+
+        if (action === 'frontdesk-password' && req.method === 'POST') {
+            if (!checkAdmin()) return;
+            const { password } = req.body;
+            if (!password) return res.status(400).json({ error: '缺少密码' });
+            await redis.set('config:frontdesk_password', password);
             return res.status(200).json({ success: true });
         }
 
