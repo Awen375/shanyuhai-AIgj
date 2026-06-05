@@ -34,11 +34,7 @@ export default async function handler(req, res) {
                     rooms.push({ id: key.replace('room:', ''), ...room });
                 }
             }
-            rooms.sort((a, b) => {
-                const numA = parseInt(a.id.replace(/\D/g, '')) || 0;
-                const numB = parseInt(b.id.replace(/\D/g, '')) || 0;
-                return numA - numB;
-            });
+            rooms.sort((a, b) => (parseInt(a.id) || 0) - (parseInt(b.id) || 0));
             return res.status(200).json({ rooms });
         }
 
@@ -137,7 +133,6 @@ export default async function handler(req, res) {
             task.answer = answer;
             task.resolvedAt = new Date().toISOString();
             await redis.set(`unanswered:${taskId}`, JSON.stringify(task));
-
             const existingKeys = await redis.keys('knowledge:*');
             let exists = false;
             for (const key of existingKeys) {
@@ -156,25 +151,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ success: true });
         }
 
-        // ===== 已解决问题 =====
-        if (action === 'resolved' && req.method === 'GET') {
-            if (!checkAdmin()) return;
-            const keys = await redis.keys('unanswered:*');
-            const items = [];
-            for (const key of keys) {
-                const data = await redis.get(key);
-                if (data) {
-                    const item = typeof data === 'string' ? JSON.parse(data) : data;
-                    if (item.status === 'resolved') {
-                        items.push({ id: key.replace('unanswered:', ''), ...item });
-                    }
-                }
-            }
-            items.sort((a, b) => new Date(b.resolvedAt) - new Date(a.resolvedAt));
-            return res.status(200).json({ items });
-        }
-
-        // ===== 聊天记录汇总 =====
+        // ===== 聊天记录 =====
         if (action === 'chat-summary' && req.method === 'GET') {
             if (!checkAdmin()) return;
             const keys = await redis.keys('chat:*');
@@ -224,39 +201,36 @@ export default async function handler(req, res) {
             return res.status(200).json({ success: true });
         }
 
-        if (action === 'chatlogs/clear' && req.method === 'POST') {
+        // ===== 关键词设置（独立+类型） =====
+        if (action === 'keywords' && req.method === 'GET') {
             if (!checkAdmin()) return;
-            const keys = await redis.keys('chat:*');
-            for (const key of keys) await redis.del(key);
-            return res.status(200).json({ success: true, deleted: keys.length });
+            const data = await redis.get('config:keywords');
+            const list = data ? (typeof data === 'string' ? JSON.parse(data) : data) : [];
+            return res.status(200).json({ keywords: list });
         }
 
-        // ===== 中控台 - 关键词 =====
-        if (action === 'alert-keywords' && req.method === 'GET') {
+        if (action === 'keywords' && req.method === 'POST') {
             if (!checkAdmin()) return;
-            const data = await redis.get('config:alert_keywords');
-            const keywords = data ? (typeof data === 'string' ? JSON.parse(data) : data) : [];
-            return res.status(200).json({ keywords });
-        }
-
-        if (action === 'alert-keywords' && req.method === 'POST') {
-            if (!checkAdmin()) return;
-            const { keywords } = req.body;
-            if (!Array.isArray(keywords)) return res.status(400).json({ error: 'keywords 必须是数组' });
-            await redis.set('config:alert_keywords', JSON.stringify(keywords));
+            const { keywords } = req.body;   // [{keyword, type}, ...]
+            if (!Array.isArray(keywords)) return res.status(400).json({ error: '格式错误' });
+            await redis.set('config:keywords', JSON.stringify(keywords));
             return res.status(200).json({ success: true });
         }
 
-        // ===== 通知列表 =====
+        // ===== 通知列表（可按类型筛选） =====
         if (action === 'notifications' && req.method === 'GET') {
             if (!checkAdmin()) return;
+            const { type } = req.query;
             const keys = await redis.keys('notification:*');
             const items = [];
             for (const key of keys) {
                 const data = await redis.get(key);
                 if (data) {
                     const notif = typeof data === 'string' ? JSON.parse(data) : data;
-                    if (notif.status === 'pending') items.push({ id: key.replace('notification:', ''), ...notif });
+                    if (notif.status === 'pending') {
+                        if (type && notif.type !== type) continue;
+                        items.push({ id: key.replace('notification:', ''), ...notif });
+                    }
                 }
             }
             items.sort((a, b) => new Date(b.time) - new Date(a.time));
@@ -278,20 +252,24 @@ export default async function handler(req, res) {
 
         if (action === 'notifications-history' && req.method === 'GET') {
             if (!checkAdmin()) return;
+            const { type } = req.query;
             const keys = await redis.keys('notification:*');
             const items = [];
             for (const key of keys) {
                 const data = await redis.get(key);
                 if (data) {
                     const notif = typeof data === 'string' ? JSON.parse(data) : data;
-                    if (notif.status === 'done') items.push({ id: key.replace('notification:', ''), ...notif });
+                    if (notif.status === 'done') {
+                        if (type && notif.type !== type) continue;
+                        items.push({ id: key.replace('notification:', ''), ...notif });
+                    }
                 }
             }
             items.sort((a, b) => new Date(b.resolvedAt) - new Date(a.resolvedAt));
             return res.status(200).json({ history: items });
         }
 
-        // ===== 前台端设置 =====
+        // ===== 前台端密码 =====
         if (action === 'frontdesk-password' && req.method === 'GET') {
             if (!checkAdmin()) return;
             const pwd = await redis.get('config:frontdesk_password') || '1234';
