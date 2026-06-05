@@ -62,23 +62,22 @@
 
         <!-- AI管家设置 -->
         <div class="card">
-            <h2 onclick="togglePanel('aiSettingsPanel')">🤖 AI管家设置 <span class="collapse-icon">▼</span></h2>
-            <div id="aiSettingsPanel" style="display:none;">
+            <h2 onclick="togglePanel('aiPanel')">🤖 AI管家设置 <span class="collapse-icon">▼</span></h2>
+            <div id="aiPanel" style="display:none;">
                 <div class="flex-row">
-                    <span class="label">AI管家名称：</span>
-                    <input type="text" id="aiName" placeholder="例如：小予" style="width:200px;">
+                    <span class="label">AI名称：</span>
+                    <input type="text" id="aiName" placeholder="小予" style="width:200px;">
                 </div>
                 <div style="margin-top:15px;">
-                    <strong>🔧 未回答回复模板</strong>
-                    <p style="color:#888;font-size:13px;">可用变量：<code>{room}</code> = 房间号，<code>{phone}</code> = 前台电话，<code>{name}</code> = AI名称</p>
-                    <textarea id="aiFallbackReply" rows="3" placeholder="抱歉，{name}暂时无法回答这个问题～请拨打前台电话 {phone} 咨询哦"></textarea>
+                    <strong>未回答回复模板</strong>
+                    <textarea id="fallbackReply" rows="3" placeholder="{name}暂时无法回答..."></textarea>
                 </div>
                 <div style="margin-top:15px;">
-                    <strong>📝 额外提示</strong>
-                    <textarea id="aiFallbackNote" rows="2" placeholder="例如：前台已收到您的问题，工作人员稍后会来房间为您解答"></textarea>
+                    <strong>额外提示</strong>
+                    <textarea id="fallbackNote" rows="2" placeholder="可选"></textarea>
                 </div>
-                <button onclick="saveAISettings()" style="margin-top:15px;">💾 保存AI设置</button>
-                <p id="aiSettingsMsg" style="text-align:center; color:green;"></p>
+                <button onclick="saveAISettings()">💾 保存AI设置</button>
+                <p id="aiMsg"></p>
             </div>
         </div>
 
@@ -87,51 +86,28 @@
             <h2 onclick="togglePanel('unansweredPanel')">🆘 需人工解决的问题 <span class="collapse-icon">▼</span></h2>
             <div id="unansweredPanel" style="display:none;">
                 <table id="unansweredTable">
-                    <thead><tr><th>时间</th><th>房间</th><th>客人问题</th><th>操作</th></tr></thead>
+                    <thead><tr><th>时间</th><th>房间</th><th>问题</th><th>操作</th></tr></thead>
                     <tbody></tbody>
                 </table>
-                <div id="answerForm" style="display:none; background:#f8fafc; border-radius:12px; padding:15px; margin-top:15px;">
-                    <input type="hidden" id="answerTaskId">
-                    <p><strong>客人问题：</strong></p>
-                    <p id="answerQuestion" style="color:#333; margin:5px 0;"></p>
-                    <label><strong>填写答案：</strong></label>
-                    <textarea id="answerText" rows="3" placeholder="输入标准答案，将自动存入AI知识库"></textarea>
-                    <div style="margin-top:10px;">
-                        <button onclick="submitAnswer()" class="success">✅ 已解决（保存到知识库）</button>
-                        <button onclick="document.getElementById('answerForm').style.display='none'" style="background:#ccc;color:#333;">取消</button>
-                    </div>
+                <div id="answerForm" style="display:none; margin-top:15px;">
+                    <input type="hidden" id="taskId">
+                    <p><strong>问题：</strong><span id="taskQuestion"></span></p>
+                    <textarea id="answerText" rows="3" placeholder="输入答案..."></textarea>
+                    <button onclick="submitAnswer()" class="success">✅ 已解决</button>
                 </div>
-            </div>
-        </div>
-
-        <!-- 已解决的问题 -->
-        <div class="card">
-            <h2 onclick="togglePanel('resolvedPanel')">✅ 已解决的问题 <span class="collapse-icon">▼</span></h2>
-            <div id="resolvedPanel" style="display:none;">
-                <table id="resolvedTable">
-                    <thead><tr><th>解决时间</th><th>房间</th><th>问题</th><th>答案</th></tr></thead>
-                    <tbody></tbody>
-                </table>
             </div>
         </div>
 
         <!-- 聊天记录 -->
         <div class="card">
-            <h2 onclick="togglePanel('chatPanel')">💬 实时聊天记录 <span class="collapse-icon">▼</span></h2>
+            <h2 onclick="togglePanel('chatPanel')">💬 聊天记录 <span class="collapse-icon">▼</span></h2>
             <div id="chatPanel" style="display:none;">
-                <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                    <span style="color:#888; font-size:13px;">记录保存90天，到期自动删除</span>
-                    <div>
-                        <button onclick="loadChatLogs()" style="background:#3498db;">🔄 刷新</button>
-                        <button onclick="clearAllChatLogs()" class="danger">🗑 清空全部</button>
-                    </div>
-                </div>
-                <div style="max-height: 500px; overflow-y: auto;">
-                    <table id="chatLogTable">
-                        <thead><tr><th>时间</th><th>房间</th><th>客人问题</th><th>AI回复</th><th>操作</th></tr></thead>
-                        <tbody></tbody>
-                    </table>
-                </div>
+                <button onclick="loadChatLogs()">🔄 刷新</button>
+                <button onclick="clearChatLogs()" class="danger">🗑 清空</button>
+                <table id="chatTable">
+                    <thead><tr><th>时间</th><th>房间</th><th>问题</th><th>回复</th><th>操作</th></tr></thead>
+                    <tbody></tbody>
+                </table>
             </div>
         </div>
     </div>
@@ -139,10 +115,10 @@
     <!-- 二维码弹窗 -->
     <div id="qrModal" class="modal-overlay">
         <div class="modal-content">
-            <h3>房间二维码 - <span id="qrRoomId"></span></h3>
-            <img id="qrModalImage" />
-            <p style="color:#888; word-break:break-all;">链接: <span id="qrModalUrl"></span></p>
-            <button onclick="document.getElementById('qrModal').style.display='none'" style="background:#ccc;color:#333;">关闭</button>
+            <h3>房间 <span id="qrRoom"></span> 二维码</h3>
+            <img id="qrImage" />
+            <p>链接: <span id="qrUrl"></span></p>
+            <button onclick="document.getElementById('qrModal').style.display='none'">关闭</button>
         </div>
     </div>
 
@@ -151,8 +127,7 @@
         const token = () => localStorage.getItem('admin_token');
 
         function login() {
-            const pass = document.getElementById('password').value;
-            if (pass === ADMIN_PASSWORD) {
+            if (document.getElementById('password').value === ADMIN_PASSWORD) {
                 localStorage.setItem('admin_token', ADMIN_PASSWORD);
                 document.getElementById('loginBox').classList.add('hidden');
                 document.getElementById('mainPanel').classList.remove('hidden');
@@ -169,41 +144,31 @@
             loadAll();
         }
 
-        function togglePanel(panelId) {
-            const panel = document.getElementById(panelId);
+        function togglePanel(id) {
+            const panel = document.getElementById(id);
             panel.style.display = panel.style.display === 'none' ? '' : 'none';
         }
 
-        async function loadAll() {
-            await loadRooms();
-            await loadAISettings();
-            await loadUnanswered();
-            await loadResolved();
-            await loadChatLogs();
-        }
-
-        // ========== 房间管理 ==========
+        // ===== 房间管理 =====
         async function loadRooms() {
             const res = await fetch('/api/admin/rooms', { headers: { 'x-admin-token': token() } });
             const data = await res.json();
             const tbody = document.querySelector('#roomTable tbody');
             tbody.innerHTML = '';
-            if (data.rooms && data.rooms.length > 0) {
+            if (data.rooms) {
                 data.rooms.forEach(room => {
-                    const url = `https://www.shanyhgj.top/room-chat.html?room=${room.id}&token=${room.token}`;
+                    const url = `${location.origin}/room-chat.html?room=${room.id}&token=${room.token}`;
                     tbody.innerHTML += `<tr>
                         <td>${room.id}</td>
-                        <td>${room.name}</td>
-                        <td><button onclick="showQR('${room.id}', '${url}')">📱 查看二维码</button></td>
-                        <td>${room.status === 'active' ? '✅ 有效' : '❌ 过期'}</td>
+                        <td>${room.name || ''}</td>
+                        <td><button onclick="showQR('${room.id}', '${url}')">📱 查看</button></td>
+                        <td>${room.token ? '✅ 有效' : '❌ 无效'}</td>
                         <td>
-                            <button onclick="refreshRoomToken('${room.id}')" class="warning">🔄 更新二维码</button>
+                            <button onclick="refreshRoom('${room.id}')" class="warning">🔄 更新二维码</button>
                             <button onclick="deleteRoom('${room.id}')" class="danger">🗑 删除</button>
                         </td>
                     </tr>`;
                 });
-            } else {
-                tbody.innerHTML = '<tr><td colspan="5">暂无房间，请先添加</td></tr>';
             }
         }
 
@@ -218,18 +183,11 @@
             });
             document.getElementById('newRoomId').value = '';
             document.getElementById('newRoomName').value = '';
-            await loadRooms();
+            loadRooms();
         }
 
-        function showQR(roomId, url) {
-            document.getElementById('qrRoomId').innerText = roomId;
-            document.getElementById('qrModalUrl').innerText = url;
-            document.getElementById('qrModalImage').src = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(url)}`;
-            document.getElementById('qrModal').style.display = 'flex';
-        }
-
-        async function refreshRoomToken(id) {
-            if (!confirm(`确定要更新${id}号房的二维码吗？旧二维码将立即失效。`)) return;
+        async function refreshRoom(id) {
+            if (!confirm('更新二维码后，旧二维码将立即失效。确定继续？')) return;
             const res = await fetch('/api/admin/rooms/refresh', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'x-admin-token': token() },
@@ -238,72 +196,80 @@
             const data = await res.json();
             if (data.success) {
                 alert('二维码已更新！');
-                await loadRooms();
+                // 自动显示新二维码
+                const newUrl = `${location.origin}/room-chat.html?room=${id}&token=${data.token}`;
+                showQR(id, newUrl);
+                loadRooms();
+            } else {
+                alert('更新失败：' + (data.error || ''));
             }
         }
 
         async function deleteRoom(id) {
-            if (!confirm(`确定要删除${id}号房吗？`)) return;
+            if (!confirm('确定删除房间 ' + id + '？')) return;
             await fetch('/api/admin/rooms', {
                 method: 'DELETE',
                 headers: { 'Content-Type': 'application/json', 'x-admin-token': token() },
                 body: JSON.stringify({ id })
             });
-            await loadRooms();
+            loadRooms();
         }
 
-        // ========== AI设置 ==========
+        function showQR(roomId, url) {
+            document.getElementById('qrRoom').innerText = roomId;
+            document.getElementById('qrUrl').innerText = url;
+            document.getElementById('qrImage').src = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(url)}`;
+            document.getElementById('qrModal').style.display = 'flex';
+        }
+
+        // ===== AI设置 =====
         async function loadAISettings() {
             const res = await fetch('/api/admin/ai-settings', { headers: { 'x-admin-token': token() } });
             const data = await res.json();
             document.getElementById('aiName').value = data.name || '小予';
-            document.getElementById('aiFallbackReply').value = data.fallbackReply || '';
-            document.getElementById('aiFallbackNote').value = data.fallbackNote || '';
+            document.getElementById('fallbackReply').value = data.fallbackReply || '';
+            document.getElementById('fallbackNote').value = data.fallbackNote || '';
         }
 
         async function saveAISettings() {
             const name = document.getElementById('aiName').value.trim();
-            const fallbackReply = document.getElementById('aiFallbackReply').value.trim();
-            const fallbackNote = document.getElementById('aiFallbackNote').value.trim();
+            const fallbackReply = document.getElementById('fallbackReply').value.trim();
+            const fallbackNote = document.getElementById('fallbackNote').value.trim();
             await fetch('/api/admin/ai-settings', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'x-admin-token': token() },
                 body: JSON.stringify({ name, fallbackReply, fallbackNote })
             });
-            document.getElementById('aiSettingsMsg').innerText = '✅ 设置已保存';
-            setTimeout(() => { document.getElementById('aiSettingsMsg').innerText = ''; }, 2000);
+            document.getElementById('aiMsg').innerText = '✅ 已保存';
         }
 
-        // ========== 未解决问题 ==========
+        // ===== 未解决问题 =====
         async function loadUnanswered() {
             const res = await fetch('/api/admin/unanswered', { headers: { 'x-admin-token': token() } });
             const data = await res.json();
             const tbody = document.querySelector('#unansweredTable tbody');
             tbody.innerHTML = '';
-            if (data.items && data.items.length > 0) {
+            if (data.items) {
                 data.items.forEach(item => {
-                    const time = new Date(item.time).toLocaleString('zh-CN');
                     tbody.innerHTML += `<tr>
-                        <td>${time}</td>
-                        <td>${item.room || '未指定'}</td>
+                        <td>${new Date(item.time).toLocaleString()}</td>
+                        <td>${item.room || ''}</td>
                         <td>${item.question}</td>
-                        <td><button onclick="showAnswerForm('${item.id}', '${escapeHtml(item.question)}')" class="info">💬 回答</button></td>
+                        <td><button onclick="showAnswerForm('${item.id}', '${item.question.replace(/'/g, "\\'")}')">💬 回答</button></td>
                     </tr>`;
                 });
-            } else {
-                tbody.innerHTML = '<tr><td colspan="4">暂无需要人工解决的问题 🎉</td></tr>';
             }
         }
 
         function showAnswerForm(taskId, question) {
-            document.getElementById('answerTaskId').value = taskId;
-            document.getElementById('answerQuestion').innerText = question;
+            document.getElementById('taskId').value = taskId;
+            document.getElementById('taskQuestion').innerText = question;
             document.getElementById('answerText').value = '';
             document.getElementById('answerForm').style.display = 'block';
         }
 
         async function submitAnswer() {
-            const taskId = document.getElementById('answerTaskId').value;
+            const taskId = document.getElementById('taskId').value;
             const answer = document.getElementById('answerText').value.trim();
             if (!answer) return alert('请输入答案');
             await fetch('/api/admin/unanswered', {
@@ -312,72 +278,29 @@
                 body: JSON.stringify({ taskId, answer })
             });
             document.getElementById('answerForm').style.display = 'none';
-            await loadUnanswered();
-            await loadResolved();
-            alert('✅ 已标记为已解决，答案已存入AI知识库');
+            loadUnanswered();
         }
 
-        // ========== 已解决问题 ==========
-        async function loadResolved() {
-            const res = await fetch('/api/admin/resolved', { headers: { 'x-admin-token': token() } });
-            const data = await res.json();
-            const tbody = document.querySelector('#resolvedTable tbody');
-            tbody.innerHTML = '';
-            if (data.items && data.items.length > 0) {
-                data.items.forEach(item => {
-                    const time = new Date(item.resolvedAt).toLocaleString('zh-CN');
-                    tbody.innerHTML += `<tr>
-                        <td>${time}</td>
-                        <td>${item.room || '未指定'}</td>
-                        <td>${item.question}</td>
-                        <td>${item.answer}</td>
-                    </tr>`;
-                });
-            } else {
-                tbody.innerHTML = '<tr><td colspan="4">暂无已解决的问题</td></tr>';
-            }
-        }
-
-        // ========== 聊天记录 ==========
+        // ===== 聊天记录 =====
         async function loadChatLogs() {
             const res = await fetch('/api/admin/chatlogs', { headers: { 'x-admin-token': token() } });
             const data = await res.json();
-            const tbody = document.querySelector('#chatLogTable tbody');
+            const tbody = document.querySelector('#chatTable tbody');
             tbody.innerHTML = '';
-            if (data.logs && data.logs.length > 0) {
+            if (data.logs) {
                 data.logs.forEach(log => {
-                    const time = new Date(log.time).toLocaleString('zh-CN');
-                    const shortQ = log.question.length > 30 ? log.question.substring(0, 30) + '...' : log.question;
-                    const shortR = log.reply.length > 30 ? log.reply.substring(0, 30) + '...' : log.reply;
                     tbody.innerHTML += `<tr>
-                        <td style="white-space:nowrap;font-size:12px;">${time}</td>
-                        <td>${log.room || '未知'}</td>
-                        <td title="${escapeHtml(log.question)}">${shortQ}</td>
-                        <td title="${escapeHtml(log.reply)}">${shortR}</td>
-                        <td>
-                            <button onclick="viewChatDetail('${log.id}')" style="font-size:12px;padding:4px 10px;">查看</button>
-                            <button onclick="deleteChatLog('${log.id}')" class="danger" style="font-size:12px;padding:4px 10px;">删除</button>
-                        </td>
+                        <td>${new Date(log.time).toLocaleString()}</td>
+                        <td>${log.room || ''}</td>
+                        <td title="${log.question}">${log.question.substring(0,20)}...</td>
+                        <td title="${log.reply}">${log.reply.substring(0,20)}...</td>
+                        <td><button onclick="deleteChatLog('${log.id}')" class="danger">删除</button></td>
                     </tr>`;
                 });
-            } else {
-                tbody.innerHTML = '<tr><td colspan="5">暂无聊天记录</td></tr>';
             }
         }
 
-        function viewChatDetail(id) {
-            const rows = document.querySelectorAll('#chatLogTable tbody tr');
-            rows.forEach(row => {
-                const delBtn = row.querySelector('button.danger');
-                if (delBtn && delBtn.getAttribute('onclick').includes(id)) {
-                    const cells = row.querySelectorAll('td');
-                    alert(`客人问题：\n${cells[2].getAttribute('title') || cells[2].innerText}\n\nAI回复：\n${cells[3].getAttribute('title') || cells[3].innerText}`);
-                }
-            });
-        }
-
         async function deleteChatLog(id) {
-            if (!confirm('确定删除这条聊天记录吗？')) return;
             await fetch('/api/admin/chatlogs', {
                 method: 'DELETE',
                 headers: { 'Content-Type': 'application/json', 'x-admin-token': token() },
@@ -386,20 +309,20 @@
             loadChatLogs();
         }
 
-        async function clearAllChatLogs() {
-            if (!confirm('确定清空所有聊天记录吗？此操作不可恢复！')) return;
-            const res = await fetch('/api/admin/chatlogs/clear', {
+        async function clearChatLogs() {
+            if (!confirm('确定清空所有聊天记录？')) return;
+            await fetch('/api/admin/chatlogs/clear', {
                 method: 'POST',
                 headers: { 'x-admin-token': token() }
             });
-            const data = await res.json();
-            alert(`已清空 ${data.deleted} 条聊天记录`);
             loadChatLogs();
         }
 
-        function escapeHtml(text) {
-            if (!text) return '';
-            return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        async function loadAll() {
+            loadRooms();
+            loadAISettings();
+            loadUnanswered();
+            loadChatLogs();
         }
     </script>
 </body>
