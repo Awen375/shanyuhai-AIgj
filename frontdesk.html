@@ -17,6 +17,9 @@
         .hidden { display: none; }
         table { width: 100%; border-collapse: collapse; margin-top: 15px; }
         th, td { border-bottom: 1px solid #eee; padding: 8px; }
+        button { padding: 12px 24px; background: #1e90ff; color: white; border: none; border-radius: 25px; cursor: pointer; font-weight: 600; }
+        button:disabled { opacity: 0.6; cursor: not-allowed; }
+        .error-msg { color: red; margin-top: 10px; }
     </style>
 </head>
 <body>
@@ -25,8 +28,8 @@
         <div class="logo">🌊</div>
         <h2>山予海AI管家前台端</h2>
         <input type="password" id="frontPassInput" placeholder="请输入前台端密码" style="width:100%; padding:12px; margin:15px 0; border-radius:12px; border:1px solid #ddd;">
-        <button onclick="loginFront()" style="width:100%; background:#1e90ff; color:white; border:none; padding:12px; border-radius:25px; font-weight:600;">进入前台</button>
-        <p id="loginMsg" style="color:red;"></p>
+        <button id="loginBtn" onclick="loginFront()">进入前台</button>
+        <p id="loginMsg" class="error-msg"></p>
     </div>
 
     <!-- 数据看板 -->
@@ -36,18 +39,18 @@
         <div class="card-data">
             <div class="data-item" onclick="showRooms()">
                 <span>🏠 今日使用</span>
-                <strong id="roomCount">0</strong>
+                <strong id="roomCount">-</strong>
             </div>
             <div class="data-item" onclick="showNotifCount()">
                 <span>🔔 待处理通知</span>
-                <strong id="notifCount">0</strong>
+                <strong id="notifCount">-</strong>
             </div>
-            <div class="data-item">
+            <div class="data-item" onclick="showCleanTasks()">
                 <span>🧹 清扫任务</span>
-                <strong id="cleanCount">0</strong>
+                <strong id="cleanCount">-</strong>
             </div>
         </div>
-        <button onclick="speakNotif()" style="margin:10px;">🔊 播报通知</button>
+        <button onclick="speakNotif()">🔊 播报通知</button>
         <div id="detailPanel" class="hidden" style="text-align:left; margin-top:20px;">
             <h4 id="detailTitle"></h4>
             <table id="detailTable"><tbody></tbody></table>
@@ -56,33 +59,44 @@
     </div>
 
     <script>
-        let currentRooms = [];
-        let notifCount = 0;
+        let dashboardData = null;
 
         async function loginFront() {
             const pass = document.getElementById('frontPassInput').value;
-            const res = await fetch('/api/frontdesk?password=' + encodeURIComponent(pass));
-            const data = await res.json();
-            if (data.valid) {
-                document.getElementById('loginPanel').classList.add('hidden');
-                document.getElementById('dashboardPanel').classList.remove('hidden');
-                loadDashboard(data);
-            } else {
-                document.getElementById('loginMsg').innerText = '密码错误';
+            const msgEl = document.getElementById('loginMsg');
+            const btn = document.getElementById('loginBtn');
+            btn.disabled = true;
+            msgEl.innerText = '正在验证...';
+            
+            try {
+                const res = await fetch('/api/frontdesk?password=' + encodeURIComponent(pass));
+                if (!res.ok) throw new Error('服务器响应错误 ' + res.status);
+                const data = await res.json();
+                
+                if (data.valid) {
+                    document.getElementById('loginPanel').classList.add('hidden');
+                    document.getElementById('dashboardPanel').classList.remove('hidden');
+                    dashboardData = data;
+                    loadDashboard();
+                } else {
+                    msgEl.innerText = '密码错误，请重试';
+                }
+            } catch (err) {
+                console.error(err);
+                msgEl.innerText = '连接失败：' + err.message;
+            } finally {
+                btn.disabled = false;
             }
         }
 
-        async function loadDashboard(data) {
-            // 显示今日使用房间
-            const rooms = data.rooms || [];
-            currentRooms = rooms;
-            document.getElementById('roomCount').innerText = rooms.length;
-            // 待处理通知
-            notifCount = data.notifCount || 0;
-            document.getElementById('notifCount').innerText = notifCount;
-            // 清扫任务（简单模拟：通知中包含“清扫”关键词的数量）
-            const cleanTasks = data.notifications ? data.notifications.filter(n => n.question.includes('清扫') || n.reply.includes('清扫')).length : 0;
-            document.getElementById('cleanCount').innerText = cleanTasks;
+        function loadDashboard() {
+            const data = dashboardData;
+            if (!data) return;
+            document.getElementById('roomCount').innerText = data.rooms ? data.rooms.length : 0;
+            document.getElementById('notifCount').innerText = data.notifCount || 0;
+            const cleanCount = data.notifications ? data.notifications.filter(n => 
+                n.question?.includes('清扫') || n.reply?.includes('清扫')).length : 0;
+            document.getElementById('cleanCount').innerText = cleanCount;
         }
 
         function showRooms() {
@@ -90,16 +104,28 @@
             panel.classList.remove('hidden');
             document.getElementById('detailTitle').innerText = '今日使用房间';
             const tbody = document.querySelector('#detailTable tbody');
-            tbody.innerHTML = currentRooms.map(r => `<tr><td>${r}</td></tr>`).join('') || '<tr><td>暂无</td></tr>';
+            tbody.innerHTML = (dashboardData?.rooms || []).map(r => `<tr><td>${r}</td></tr>`).join('') || '<tr><td>暂无</td></tr>';
         }
 
         function showNotifCount() {
-            alert(`当前待处理通知：${notifCount} 条`);
+            alert(`当前待处理通知：${dashboardData?.notifCount || 0} 条`);
+        }
+
+        function showCleanTasks() {
+            const tasks = dashboardData?.notifications?.filter(n => n.question?.includes('清扫') || n.reply?.includes('清扫')) || [];
+            const panel = document.getElementById('detailPanel');
+            panel.classList.remove('hidden');
+            document.getElementById('detailTitle').innerText = '清扫任务';
+            const tbody = document.querySelector('#detailTable tbody');
+            tbody.innerHTML = tasks.length ? tasks.map(t => `<tr><td>房间 ${t.room} - ${new Date(t.time).toLocaleString()}</td></tr>`).join('') : '<tr><td>暂无清扫任务</td></tr>';
         }
 
         function speakNotif() {
+            if (!dashboardData) return;
             if ('speechSynthesis' in window) {
-                const utter = new SpeechSynthesisUtterance(`当前待处理通知 ${notifCount} 条，今日 ${currentRooms.length} 个房间使用过AI管家`);
+                const roomCount = dashboardData.rooms ? dashboardData.rooms.length : 0;
+                const notifCount = dashboardData.notifCount || 0;
+                const utter = new SpeechSynthesisUtterance(`当前待处理通知 ${notifCount} 条，今日 ${roomCount} 个房间使用过AI管家`);
                 utter.lang = 'zh-CN';
                 speechSynthesis.speak(utter);
             }
