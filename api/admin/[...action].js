@@ -71,17 +71,22 @@ export default async function handler(req, res) {
             return res.status(200).json({ success: true });
         }
 
+        // ★ 刷新房间 token，确保旧 token 失效
         if (action === 'rooms/refresh' && req.method === 'POST') {
             if (!checkAdmin()) return;
             const { id } = req.body;
             if (!id) return res.status(400).json({ error: '缺少房间号' });
             const existing = await redis.get(`room:${id}`);
             if (!existing) return res.status(404).json({ error: '房间不存在' });
+            
             const room = typeof existing === 'string' ? JSON.parse(existing) : existing;
+            // 生成全新 token，立即覆盖旧值
             const newToken = `${Date.now()}-${Math.random().toString(36).substr(2, 8)}`;
             room.token = newToken;
             room.updatedAt = new Date().toISOString();
+            
             await redis.set(`room:${id}`, JSON.stringify(room));
+            
             return res.status(200).json({ success: true, token: newToken });
         }
 
