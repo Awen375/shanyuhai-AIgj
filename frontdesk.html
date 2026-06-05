@@ -20,6 +20,7 @@
         .dashboard { 
             background: white; border-radius: 20px; padding: 30px; 
             text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.05); 
+            position: relative;
         }
         .logo { font-size: 60px; margin-bottom: 10px; }
         h2 { color: #0b4f6c; margin-bottom: 30px; }
@@ -54,6 +55,21 @@
         button.success { background: #27ae60; }
         button.danger { background: #e74c3c; }
         .hidden { display: none; }
+
+        .support-text {
+            margin-top: 20px;
+            font-size: 12px;
+            color: #888;
+            text-align: center;
+        }
+        .today-stats-link {
+            font-size: 12px;
+            color: #3498db;
+            cursor: pointer;
+            text-decoration: underline;
+            margin-top: 5px;
+            text-align: center;
+        }
     </style>
 </head>
 <body>
@@ -103,6 +119,10 @@
                     <div class="count" id="cnt_extend">0</div>
                 </div>
             </div>
+
+            <!-- 底部技术支持与统计 -->
+            <div class="support-text">本程序由，山予海AI大模型团队提供技术支持</div>
+            <div class="today-stats-link" onclick="openTodayStats()">📊 今日处理统计</div>
         </div>
     </div>
 
@@ -171,7 +191,6 @@
             document.getElementById('cnt_food').innerText = current.food;
             document.getElementById('cnt_extend').innerText = current.extend;
 
-            // 检查变化并播报
             if (!skipVoice) {
                 const changes = [];
                 for (const type of ['urgent','clean','car','food','extend']) {
@@ -203,7 +222,7 @@
             return map[type] || '';
         }
 
-        // 打开今日使用房间列表
+        // 今日使用房间列表
         async function openUsageList() {
             const rooms = dashboardData?.todayRooms || [];
             document.getElementById('listTitle').innerText = '今日使用房间';
@@ -220,7 +239,7 @@
             document.getElementById('listModal').style.display = 'flex';
         }
 
-        // 打开通知类型列表
+        // 通知类型列表
         async function openNotifyList(type) {
             document.getElementById('listTitle').innerText = getTypeName(type) + ' 待处理列表';
             document.getElementById('historyBtn').style.display = 'inline-block';
@@ -254,13 +273,11 @@
                 headers: {'Content-Type':'application/json'},
                 body: JSON.stringify({ id, password: pass })
             });
-            // 重新加载当前类型的列表
             const title = document.getElementById('listTitle').innerText;
             const typeMap = { '紧急通知':'urgent', '清扫任务':'clean', '用车服务':'car', '订餐服务':'food', '续住需求':'extend' };
             const typeKey = Object.entries(typeMap).find(([k,v]) => title.includes(k))?.[1];
             if (typeKey) {
                 await loadNotifications(typeKey);
-                // 刷新总数据
                 const res = await fetch(BASE + '?password=' + encodeURIComponent(pass));
                 dashboardData = await res.json();
                 updateDashboard();
@@ -288,6 +305,34 @@
             } else {
                 tbody.innerHTML = '<tr><td colspan="3">暂无处理记录</td></tr>';
             }
+        }
+
+        // 今日处理统计（所有类型）
+        async function openTodayStats() {
+            const pass = PASSWORD();
+            // 请求所有已处理通知（不带type）
+            const res = await fetch(`${BASE}/notifications?password=${encodeURIComponent(pass)}&history=1`);
+            const data = await res.json();
+            const todayStr = new Date().toISOString().slice(0, 10);
+            // 过滤今天处理的通知
+            const todayItems = (data.history || []).filter(n => n.resolvedAt && n.resolvedAt.startsWith(todayStr));
+            
+            document.getElementById('listTitle').innerText = '今日处理统计';
+            document.getElementById('historyBtn').style.display = 'none';
+            const tbody = document.querySelector('#notifTable tbody');
+            tbody.innerHTML = '';
+            if (todayItems.length > 0) {
+                todayItems.forEach(n => {
+                    tbody.innerHTML += `<tr>
+                        <td>${n.room}</td>
+                        <td>${n.question}</td>
+                        <td>${new Date(n.resolvedAt).toLocaleString()}</td>
+                    </tr>`;
+                });
+            } else {
+                tbody.innerHTML = '<tr><td colspan="3">今日暂无处理记录</td></tr>';
+            }
+            document.getElementById('listModal').style.display = 'flex';
         }
 
         function startAutoRefresh() {
