@@ -128,20 +128,26 @@ ${knowledgeText || '暂无'}`;
         
         const data = await response.json();
         
-        // ★ 修复 undefined：检查 API 返回结构
+        // 检查 API 错误
+        if (data.error) {
+            console.error('DeepSeek API 错误:', JSON.stringify(data.error));
+            return res.status(500).json({ error: 'AI 服务异常：' + data.error.message });
+        }
+        
         if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-            console.error('DeepSeek 返回异常:', JSON.stringify(data));
+            console.error('DeepSeek 返回结构异常:', JSON.stringify(data));
             return res.status(500).json({ error: 'AI 返回数据异常，请稍后重试' });
         }
         
-        let reply = data.choices[0].message.content || '抱歉，我暂时无法回答这个问题，请稍后再试。';
+        let reply = data.choices[0].message.content || '';
 
-        // 判断是否需要使用 fallback 回复
-        if (reply.includes('不太确定') || 
-            reply.includes('无法回答') || 
-            reply.includes('这个我不太清楚') ||
-            reply.includes('拨打前台电话')) {
-            
+        // ★ 修复：只对真正“不知道”的情况触发 fallback，移除“拨打前台电话”
+        const isUnsure = reply.includes('不太确定') || 
+                        reply.includes('无法回答') || 
+                        reply.includes('这个我不太清楚') ||
+                        reply.includes('抱歉，我暂时无法');
+        
+        if (isUnsure || !reply) {
             // 记录到未回答问题
             const existingKeys = await redis.keys('unanswered:*');
             let isDuplicate = false;
@@ -192,6 +198,6 @@ ${knowledgeText || '暂无'}`;
         return res.status(200).json({ reply });
     } catch (err) {
         console.error('AI Chat Error:', err);
-        return res.status(500).json({ error: 'AI服务暂时不可用' });
+        return res.status(500).json({ error: 'AI服务暂时不可用：' + err.message });
     }
 }
