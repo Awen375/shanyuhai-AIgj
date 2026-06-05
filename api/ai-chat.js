@@ -127,7 +127,14 @@ ${knowledgeText || '暂无'}`;
         });
         
         const data = await response.json();
-        let reply = data.choices[0].message.content;
+        
+        // ★ 修复 undefined：检查 API 返回结构
+        if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+            console.error('DeepSeek 返回异常:', JSON.stringify(data));
+            return res.status(500).json({ error: 'AI 返回数据异常，请稍后重试' });
+        }
+        
+        let reply = data.choices[0].message.content || '抱歉，我暂时无法回答这个问题，请稍后再试。';
 
         // 判断是否需要使用 fallback 回复
         if (reply.includes('不太确定') || 
@@ -184,6 +191,7 @@ ${knowledgeText || '暂无'}`;
         
         return res.status(200).json({ reply });
     } catch (err) {
+        console.error('AI Chat Error:', err);
         return res.status(500).json({ error: 'AI服务暂时不可用' });
     }
 }
