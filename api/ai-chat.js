@@ -58,14 +58,13 @@ Day3：早餐 → 下尾岛 → 县城逛逛 → 返程
 - 可代订海鲜大排档
 - 前台可借充电宝、雨伞
 `;
-
 async function getAISettings() {
     const settings = await redis.get('config:ai');
     if (!settings) {
-        return { 
-            name: '小予', 
-            fallbackReply: '抱歉，{name}暂时无法回答这个问题～请拨打前台电话 {phone} 咨询哦', 
-            fallbackNote: '' 
+        return {
+            name: '小予',
+            fallbackReply: '抱歉，{name}暂时无法回答这个问题～请拨打前台电话 {phone} 咨询哦',
+            fallbackNote: ''
         };
     }
     const data = typeof settings === 'string' ? JSON.parse(settings) : settings;
@@ -113,20 +112,38 @@ export default async function handler(req, res) {
 2. 理解客人的同义表达。
 3. 如果客人问题模糊，主动追问。
 4. 用第一人称，亲切自然，适当使用emoji。
-5. 如果遇到需要人工处理的问题，提示拨打前台电话 0593-8850999。
-6.客人问的日出时间日落时间以及赶海最佳时间，必须按照实际时间为准。
+5. 如果遇到需要人工处理的问题，提示拨打前台电话 138xxxx1234。
+
 【民宿完整信息】
 ${hotelInfo}
 
 【补充知识库】
 ${knowledgeText || '暂无'}`;
 
-        // 检查关键词（用于后续通知和回复）
+        // 检查关键词匹配
         const matched = await matchKeywords(question);
 
-        // 如果关键词有预设回复内容，将回复指令加入系统提示，让AI基于此扩展回复
+        // 处理关键词的预设回复（包括括号指令）
         if (matched && matched.reply) {
-            systemPrompt += `\n\n【特别注意】客人提到了“${matched.keyword}”，请根据以下指令生成回复：${matched.reply}。请以亲切、自然的语气扩展成完整的回复，适当加入emoji。`;
+            let replyBody = matched.reply;
+            let instruction = '';
+
+            // 提取中文括号内的指令（例如：我们已经收到您的报修（语气要急切））
+            const bracketMatch = matched.reply.match(/（([^）]+)）/);
+            if (bracketMatch) {
+                replyBody = matched.reply.replace(/（[^）]+）/, '').trim();  // 去掉括号及内容
+                instruction = bracketMatch[1];  // 括号内的指令
+            }
+
+            // 将回复要点和指令分别告诉AI
+            let extraPrompt = '';
+            if (replyBody) {
+                extraPrompt += `\n\n【回复要点】请根据以下内容生成回复：${replyBody}`;
+            }
+            if (instruction) {
+                extraPrompt += `\n【回复指示】请严格遵循以下要求来调整回复的语气、风格或内容：${instruction}`;
+            }
+            systemPrompt += extraPrompt;
         }
 
         const response = await fetch('https://api.deepseek.com/chat/completions', {
@@ -149,7 +166,7 @@ ${knowledgeText || '暂无'}`;
         if (!content) return res.status(500).json({ error: 'AI无返回' });
         let reply = content;
 
-        // 记录未回答
+        // 记录未回答问题
         if (reply.includes('不太确定') || reply.includes('无法回答') || reply.includes('这个我不太清楚')) {
             await redis.set(`unanswered:${Date.now()}`, JSON.stringify({
                 question, room: room || '', time: new Date().toISOString(), status: 'pending'
@@ -161,9 +178,9 @@ ${knowledgeText || '暂无'}`;
         // 存储聊天记录
         const chatKey = `chat:${Date.now()}:${Math.random().toString(36).substr(2,6)}`;
         await redis.set(chatKey, JSON.stringify({ room: room || '未知', question, reply, time: new Date().toISOString() }));
-        await redis.expire(chatKey, 60*60*24*90);
+        await redis.expire(chatKey, 60 * 60 * 24 * 90);
 
-        // 创建通知（排除类型为 "other" 的关键词）
+        // 创建通知：仅当关键词类型不是 "other" 时才通知
         if (matched && matched.type !== 'other') {
             await redis.set(`notification:${Date.now()}`, JSON.stringify({
                 room: room || '未知',
