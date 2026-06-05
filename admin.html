@@ -30,7 +30,7 @@
         .collapsed .collapse-icon { transform: rotate(-90deg); }
         .notif-btn { position: relative; display: inline-block; background: #f39c12; color: white; font-weight: bold; padding: 12px 25px; border-radius: 25px; cursor: pointer; margin-right: 12px; }
         .badge { position: absolute; top: -10px; right: -10px; background: red; color: white; border-radius: 50%; width: 24px; height: 24px; font-size: 12px; line-height: 24px; text-align: center; display: none; }
-        .keyword-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+        .keyword-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
         .keyword-row input { flex:1; }
         .keyword-row select { width:120px; }
     </style>
@@ -52,10 +52,20 @@
         <!-- 中控数据台（不可折叠） -->
         <div class="card" style="border:2px solid #e74c3c;">
             <h2>🖥️ 中控数据台</h2>
-            <div><strong>🔔 关键词设置（独立+类型+回复）</strong></div>
+            <div><strong>🔔 关键词设置（独立+类型）</strong></div>
             <div id="keywordList"></div>
             <button onclick="addKeywordRow()">➕ 添加关键词</button>
             <button onclick="saveKeywords()" style="margin-left:10px;">💾 保存</button>
+
+            <!-- 语音选择 -->
+            <div style="margin: 20px 0;">
+                <strong>🔊 通知语音：</strong>
+                <select id="voiceSelect" style="width: 200px; margin-left: 10px;">
+                    <option value="">加载中...</option>
+                </select>
+                <button onclick="testVoice()" style="margin-left: 10px;">▶ 试听</button>
+                <button onclick="saveVoice()" style="margin-left: 10px;">💾 保存语音</button>
+            </div>
 
             <div style="margin-top:20px;">
                 <div class="notif-btn" onclick="showNotifications()">
@@ -430,7 +440,7 @@
             loadChatSummary();
         }
 
-        // ===== 中控台 - 关键词（独立+类型+回复） =====
+        // ===== 中控台 - 关键词（独立+类型） =====
         let keywordsData = [];
 
         async function loadKeywords() {
@@ -444,8 +454,8 @@
             const container = document.getElementById('keywordList');
             container.innerHTML = keywordsData.map((item, index) => `
                 <div class="keyword-row">
-                    <input type="text" value="${item.keyword || ''}" placeholder="关键词" style="flex:1;" onchange="updateKeyword(${index}, 'keyword', this.value)">
-                    <select onchange="updateKeyword(${index}, 'type', this.value)" style="width:100px;">
+                    <input type="text" value="${item.keyword}" placeholder="关键词" onchange="updateKeyword(${index}, 'keyword', this.value)">
+                    <select onchange="updateKeyword(${index}, 'type', this.value)">
                         <option value="urgent" ${item.type === 'urgent' ? 'selected' : ''}>紧急通知</option>
                         <option value="clean" ${item.type === 'clean' ? 'selected' : ''}>清扫任务</option>
                         <option value="car" ${item.type === 'car' ? 'selected' : ''}>用车服务</option>
@@ -481,6 +491,60 @@
                 body: JSON.stringify({ keywords })
             });
             alert('关键词已保存');
+        }
+
+        // ===== 语音选择 =====
+        function loadVoices() {
+            const voices = window.speechSynthesis.getVoices();
+            const select = document.getElementById('voiceSelect');
+            select.innerHTML = '';
+            const zhVoices = voices.filter(v => v.lang.startsWith('zh'));
+            zhVoices.forEach(v => {
+                const option = document.createElement('option');
+                option.value = v.name;
+                option.textContent = v.name + ' (' + v.lang + ')';
+                select.appendChild(option);
+            });
+            if (zhVoices.length === 0) {
+                select.innerHTML = '<option value="">无可用中文语音</option>';
+            } else {
+                loadSavedVoice();
+            }
+        }
+
+        async function loadSavedVoice() {
+            try {
+                const res = await fetch('/api/admin/voice', { headers: { 'x-admin-token': token() } });
+                const data = await res.json();
+                if (data.voice) {
+                    const select = document.getElementById('voiceSelect');
+                    const exists = Array.from(select.options).some(opt => opt.value === data.voice);
+                    if (exists) select.value = data.voice;
+                }
+            } catch (e) {}
+        }
+
+        function testVoice() {
+            const selectedVoice = document.getElementById('voiceSelect').value;
+            if (!selectedVoice) return alert('请先选择一个语音');
+            const utter = new SpeechSynthesisUtterance('你好，这是山予海AI管家的测试语音。');
+            utter.lang = 'zh-CN';
+            const voices = window.speechSynthesis.getVoices();
+            const voice = voices.find(v => v.name === selectedVoice);
+            if (voice) utter.voice = voice;
+            window.speechSynthesis.cancel();
+            window.speechSynthesis.speak(utter);
+        }
+
+        async function saveVoice() {
+            const voice = document.getElementById('voiceSelect').value;
+            if (!voice) return alert('请选择一个语音');
+            await fetch('/api/admin/voice', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-admin-token': token() },
+                body: JSON.stringify({ voice })
+            });
+            alert('语音已保存');
         }
 
         // ===== 通知 =====
@@ -613,8 +677,13 @@
             loadUnanswered();
             loadChatSummary();
             loadKeywords();
+            loadVoices();          // 加载语音列表
             checkNotifications();
         }
+
+        window.speechSynthesis.onvoiceschanged = () => {
+            loadVoices();
+        };
     </script>
 </body>
 </html>
