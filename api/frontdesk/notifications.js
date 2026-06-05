@@ -16,37 +16,41 @@ export default async function handler(req, res) {
         return res.status(403).json({ error: '密码错误' });
     }
 
-    // GET：获取通知列表或历史记录
     if (req.method === 'GET') {
         const { type, history } = req.query;
         const keys = await redis.keys('notification:*');
         const list = [];
+
         for (const key of keys) {
             const raw = await redis.get(key);
-            if (raw) {
-                const n = typeof raw === 'string' ? JSON.parse(raw) : raw;
-                if (history === '1' && n.status === 'done' && n.type === type) {
+            if (!raw) continue;
+            const n = typeof raw === 'string' ? JSON.parse(raw) : raw;
+
+            if (history === '1' && n.status === 'done') {
+                // 如果指定了type，只返回该类型；否则返回所有已处理
+                if (!type || n.type === type) {
                     list.push({
                         id: key.replace('notification:', ''),
                         room: n.room,
                         question: n.question,
-                        resolvedAt: n.resolvedAt
-                    });
-                } else if (!history && n.status === 'pending' && n.type === type) {
-                    list.push({
-                        id: key.replace('notification:', ''),
-                        room: n.room,
-                        question: n.question,
-                        time: n.time
+                        resolvedAt: n.resolvedAt,
+                        type: n.type
                     });
                 }
+            } else if (!history && n.status === 'pending' && n.type === type) {
+                list.push({
+                    id: key.replace('notification:', ''),
+                    room: n.room,
+                    question: n.question,
+                    time: n.time
+                });
             }
         }
+
         list.sort((a, b) => new Date(b.resolvedAt || b.time) - new Date(a.resolvedAt || a.time));
         return res.status(200).json(history === '1' ? { history: list } : { notifications: list });
     }
 
-    // POST：标记为已处理
     if (req.method === 'POST') {
         const { id } = req.body;
         if (!id) return res.status(400).json({ error: '缺少通知ID' });
