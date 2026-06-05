@@ -71,22 +71,17 @@ export default async function handler(req, res) {
             return res.status(200).json({ success: true });
         }
 
-        // ★ 刷新房间 token，确保旧 token 失效
         if (action === 'rooms/refresh' && req.method === 'POST') {
             if (!checkAdmin()) return;
             const { id } = req.body;
             if (!id) return res.status(400).json({ error: '缺少房间号' });
             const existing = await redis.get(`room:${id}`);
             if (!existing) return res.status(404).json({ error: '房间不存在' });
-            
             const room = typeof existing === 'string' ? JSON.parse(existing) : existing;
-            // 生成全新 token，立即覆盖旧值
             const newToken = `${Date.now()}-${Math.random().toString(36).substr(2, 8)}`;
             room.token = newToken;
             room.updatedAt = new Date().toISOString();
-            
             await redis.set(`room:${id}`, JSON.stringify(room));
-            
             return res.status(200).json({ success: true, token: newToken });
         }
 
@@ -180,8 +175,41 @@ export default async function handler(req, res) {
         }
 
         // ===== 聊天记录 =====
+        // 房间汇总
+        if (action === 'chat-summary' && req.method === 'GET') {
+            if (!checkAdmin()) return;
+            const keys = await redis.keys('chat:*');
+            const roomsMap = {};
+            for (const key of keys) {
+                const data = await redis.get(key);
+                if (data) {
+                    try {
+                        const log = typeof data === 'string' ? JSON.parse(data) : data;
+                        const room = log.room || '未知';
+                        if (!roomsMap[room]) {
+                            roomsMap[room] = { lastTime: log.time, count: 0 };
+                        } else {
+                            if (log.time > roomsMap[room].lastTime) {
+                                roomsMap[room].lastTime = log.time;
+                            }
+                        }
+                        roomsMap[room].count++;
+                    } catch (e) {}
+                }
+            }
+            const summary = Object.entries(roomsMap).map(([room, info]) => ({
+                room,
+                lastTime: info.lastTime,
+                total: info.count
+            }));
+            summary.sort((a, b) => new Date(b.lastTime) - new Date(a.lastTime));
+            return res.status(200).json({ summary });
+        }
+
+        // 详细聊天记录（支持房间和日期筛选）
         if (action === 'chatlogs' && req.method === 'GET') {
             if (!checkAdmin()) return;
+            const { room, date } = req.query;
             const keys = await redis.keys('chat:*');
             const logs = [];
             for (const key of keys) {
@@ -189,12 +217,19 @@ export default async function handler(req, res) {
                 if (data) {
                     try {
                         const log = typeof data === 'string' ? JSON.parse(data) : data;
+                        // 房间筛选
+                        if (room && log.room !== room) continue;
+                        // 日期筛选
+                        if (date) {
+                            const logDate = new Date(log.time).toISOString().slice(0, 10);
+                            if (logDate !== date) continue;
+                        }
                         logs.push({ id: key.replace('chat:', ''), ...log });
                     } catch (e) {}
                 }
             }
             logs.sort((a, b) => new Date(b.time) - new Date(a.time));
-            return res.status(200).json({ logs: logs.slice(0, 200) });
+            return res.status(200).json({ logs });
         }
 
         if (action === 'chatlogs' && req.method === 'DELETE') {
