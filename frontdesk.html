@@ -6,129 +6,196 @@
     <title>山予海 · 前台端</title>
     <link rel="icon" type="image/png" href="/favicon.png">
     <style>
-        body { font-family: 'PingFang SC','Microsoft YaHei',sans-serif; background: #f0f4f8; padding: 20px; text-align: center; }
-        .login-box { max-width: 350px; margin: 100px auto; background: white; border-radius: 20px; padding: 30px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
-        .dashboard { max-width: 600px; margin: 0 auto; background: white; border-radius: 20px; padding: 30px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
+        body { font-family: 'PingFang SC','Microsoft YaHei',sans-serif; background: #f0f4f8; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
+        .container { max-width: 500px; width: 100%; }
+        .login-box { background: white; border-radius: 20px; padding: 30px; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
+        .dashboard { background: white; border-radius: 20px; padding: 30px; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
         .logo { font-size: 60px; margin-bottom: 10px; }
-        h2 { color: #0b4f6c; }
-        .card-data { display: flex; justify-content: space-around; flex-wrap: wrap; margin: 25px 0; }
-        .data-item { background: #f8fafc; border-radius: 15px; padding: 20px; min-width: 120px; cursor: pointer; }
-        .data-item strong { display: block; font-size: 28px; color: #0b4f6c; }
+        h2 { color: #0b4f6c; margin-bottom: 25px; }
+        .card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .type-card { background: #f8fafc; border-radius: 15px; padding: 20px; cursor: pointer; transition: all 0.2s; }
+        .type-card:hover { background: #e8f4fd; }
+        .type-card .count { font-size: 32px; font-weight: 700; color: #0b4f6c; }
+        .type-card .label { font-size: 14px; color: #555; }
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 999; align-items: center; justify-content: center; }
+        .modal-content { background: white; border-radius: 20px; padding: 20px; width: 90%; max-width: 500px; max-height: 70vh; overflow-y: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        th, td { border-bottom: 1px solid #eee; padding: 8px; text-align: left; }
+        button { padding: 10px 20px; background: #1e90ff; color: white; border: none; border-radius: 25px; cursor: pointer; font-weight: 600; }
+        button.success { background: #27ae60; }
+        button.danger { background: #e74c3c; }
         .hidden { display: none; }
-        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-        th, td { border-bottom: 1px solid #eee; padding: 8px; }
-        button { padding: 12px 24px; background: #1e90ff; color: white; border: none; border-radius: 25px; cursor: pointer; font-weight: 600; }
-        button:disabled { opacity: 0.6; cursor: not-allowed; }
-        .error-msg { color: red; margin-top: 10px; }
     </style>
 </head>
 <body>
-    <!-- 登录界面 -->
-    <div id="loginPanel" class="login-box">
-        <div class="logo">🌊</div>
-        <h2>山予海AI管家前台端</h2>
-        <input type="password" id="frontPassInput" placeholder="请输入前台端密码" style="width:100%; padding:12px; margin:15px 0; border-radius:12px; border:1px solid #ddd;">
-        <button id="loginBtn" onclick="loginFront()">进入前台</button>
-        <p id="loginMsg" class="error-msg"></p>
+    <div class="container">
+        <!-- 登录界面 -->
+        <div id="loginPanel" class="login-box">
+            <div class="logo">🌊</div>
+            <h2>山予海AI管家前台端</h2>
+            <input type="password" id="frontPass" placeholder="输入密码" style="width:100%; padding:12px; margin:15px 0; border-radius:12px; border:1px solid #ddd;">
+            <button id="loginBtn" onclick="login()">进入前台</button>
+            <p id="loginMsg" style="color:red;"></p>
+        </div>
+
+        <!-- 数据看板 -->
+        <div id="dashboardPanel" class="dashboard hidden">
+            <div class="logo">🌊</div>
+            <h2>山予海AI管家前台端</h2>
+            <div class="card-grid">
+                <div class="type-card" onclick="openList('usage')">
+                    <div class="count" id="cnt_usage">-</div>
+                    <div class="label">今日AI管家使用</div>
+                </div>
+                <div class="type-card" onclick="openList('urgent')">
+                    <div class="count" id="cnt_urgent">-</div>
+                    <div class="label">紧急通知</div>
+                </div>
+                <div class="type-card" onclick="openList('clean')">
+                    <div class="count" id="cnt_clean">-</div>
+                    <div class="label">清扫任务</div>
+                </div>
+                <div class="type-card" onclick="openList('car')">
+                    <div class="count" id="cnt_car">-</div>
+                    <div class="label">用车服务</div>
+                </div>
+                <div class="type-card" onclick="openList('food')">
+                    <div class="count" id="cnt_food">-</div>
+                    <div class="label">订餐服务</div>
+                </div>
+                <div class="type-card" onclick="openList('extend')">
+                    <div class="count" id="cnt_extend">-</div>
+                    <div class="label">续住需求</div>
+                </div>
+            </div>
+            <button onclick="speakNotif()" style="margin-top:20px;">🔊 播报通知</button>
+        </div>
     </div>
 
-    <!-- 数据看板 -->
-    <div id="dashboardPanel" class="dashboard hidden">
-        <div class="logo">🌊</div>
-        <h2>山予海AI管家前台端</h2>
-        <div class="card-data">
-            <div class="data-item" onclick="showRooms()">
-                <span>🏠 今日使用</span>
-                <strong id="roomCount">-</strong>
-            </div>
-            <div class="data-item" onclick="showNotifCount()">
-                <span>🔔 待处理通知</span>
-                <strong id="notifCount">-</strong>
-            </div>
-            <div class="data-item" onclick="showCleanTasks()">
-                <span>🧹 清扫任务</span>
-                <strong id="cleanCount">-</strong>
-            </div>
-        </div>
-        <button onclick="speakNotif()">🔊 播报通知</button>
-        <div id="detailPanel" class="hidden" style="text-align:left; margin-top:20px;">
-            <h4 id="detailTitle"></h4>
-            <table id="detailTable"><tbody></tbody></table>
-            <button onclick="document.getElementById('detailPanel').classList.add('hidden')">关闭</button>
+    <!-- 列表弹窗 -->
+    <div id="listModal" class="modal-overlay">
+        <div class="modal-content">
+            <h4 id="listTitle"></h4>
+            <button id="historyBtn" onclick="showHistory()" style="margin-bottom:10px; background:#3498db;">处理记录</button>
+            <table id="notifTable"><tbody></tbody></table>
+            <button onclick="document.getElementById('listModal').style.display='none'">关闭</button>
         </div>
     </div>
 
     <script>
         let dashboardData = null;
+        let currentType = '';
 
-        async function loginFront() {
-            const pass = document.getElementById('frontPassInput').value;
-            const msgEl = document.getElementById('loginMsg');
-            const btn = document.getElementById('loginBtn');
-            btn.disabled = true;
-            msgEl.innerText = '正在验证...';
-            
-            try {
-                const res = await fetch('/api/frontdesk?password=' + encodeURIComponent(pass));
-                if (!res.ok) throw new Error('服务器响应错误 ' + res.status);
-                const data = await res.json();
-                
-                if (data.valid) {
-                    document.getElementById('loginPanel').classList.add('hidden');
-                    document.getElementById('dashboardPanel').classList.remove('hidden');
-                    dashboardData = data;
-                    loadDashboard();
-                } else {
-                    msgEl.innerText = '密码错误，请重试';
-                }
-            } catch (err) {
-                console.error(err);
-                msgEl.innerText = '连接失败：' + err.message;
-            } finally {
-                btn.disabled = false;
+        async function login() {
+            const pass = document.getElementById('frontPass').value;
+            const res = await fetch('/api/frontdesk?password=' + encodeURIComponent(pass));
+            const data = await res.json();
+            if (data.valid) {
+                document.getElementById('loginPanel').classList.add('hidden');
+                document.getElementById('dashboardPanel').classList.remove('hidden');
+                dashboardData = data;
+                updateDashboard();
+                startAutoRefresh();
+            } else {
+                document.getElementById('loginMsg').innerText = '密码错误';
             }
         }
 
-        function loadDashboard() {
-            const data = dashboardData;
-            if (!data) return;
-            document.getElementById('roomCount').innerText = data.rooms ? data.rooms.length : 0;
-            document.getElementById('notifCount').innerText = data.notifCount || 0;
-            const cleanCount = data.notifications ? data.notifications.filter(n => 
-                n.question?.includes('清扫') || n.reply?.includes('清扫')).length : 0;
-            document.getElementById('cleanCount').innerText = cleanCount;
+        function updateDashboard() {
+            const types = { usage:0, urgent:0, clean:0, car:0, food:0, extend:0 };
+            if (dashboardData.notifications) {
+                dashboardData.notifications.forEach(n => {
+                    if (types.hasOwnProperty(n.type)) types[n.type]++;
+                });
+            }
+            document.getElementById('cnt_usage').innerText = dashboardData.todayRooms ? dashboardData.todayRooms.length : 0;
+            document.getElementById('cnt_urgent').innerText = types.urgent;
+            document.getElementById('cnt_clean').innerText = types.clean;
+            document.getElementById('cnt_car').innerText = types.car;
+            document.getElementById('cnt_food').innerText = types.food;
+            document.getElementById('cnt_extend').innerText = types.extend;
         }
 
-        function showRooms() {
-            const panel = document.getElementById('detailPanel');
-            panel.classList.remove('hidden');
-            document.getElementById('detailTitle').innerText = '今日使用房间';
-            const tbody = document.querySelector('#detailTable tbody');
-            tbody.innerHTML = (dashboardData?.rooms || []).map(r => `<tr><td>${r}</td></tr>`).join('') || '<tr><td>暂无</td></tr>';
+        async function openList(type) {
+            currentType = type;
+            document.getElementById('listTitle').innerText = getTypeName(type) + ' 待处理列表';
+            document.getElementById('listModal').style.display = 'flex';
+            await loadNotifList(type);
         }
 
-        function showNotifCount() {
-            alert(`当前待处理通知：${dashboardData?.notifCount || 0} 条`);
+        function getTypeName(type) {
+            const map = { usage:'今日使用', urgent:'紧急通知', clean:'清扫任务', car:'用车服务', food:'订餐服务', extend:'续住需求' };
+            return map[type] || '';
         }
 
-        function showCleanTasks() {
-            const tasks = dashboardData?.notifications?.filter(n => n.question?.includes('清扫') || n.reply?.includes('清扫')) || [];
-            const panel = document.getElementById('detailPanel');
-            panel.classList.remove('hidden');
-            document.getElementById('detailTitle').innerText = '清扫任务';
-            const tbody = document.querySelector('#detailTable tbody');
-            tbody.innerHTML = tasks.length ? tasks.map(t => `<tr><td>房间 ${t.room} - ${new Date(t.time).toLocaleString()}</td></tr>`).join('') : '<tr><td>暂无清扫任务</td></tr>';
+        async function loadNotifList(type) {
+            const res = await fetch('/api/frontdesk/notifications?type=' + type + '&password=' + encodeURIComponent(document.getElementById('frontPass').value));
+            const data = await res.json();
+            const tbody = document.querySelector('#notifTable tbody');
+            tbody.innerHTML = '';
+            if (data.notifications && data.notifications.length) {
+                data.notifications.forEach(n => {
+                    tbody.innerHTML += `<tr>
+                        <td>${n.room}</td>
+                        <td>${n.question}</td>
+                        <td><button onclick="handleNotif('${n.id}')" class="success">处理完成</button></td>
+                    </tr>`;
+                });
+            } else {
+                tbody.innerHTML = '<tr><td colspan="3">暂无数据</td></tr>';
+            }
+        }
+
+        async function handleNotif(id) {
+            await fetch('/api/frontdesk/handle', {
+                method: 'POST',
+                headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({ id, password: document.getElementById('frontPass').value })
+            });
+            await loadNotifList(currentType);
+            // 刷新统计
+            const res = await fetch('/api/frontdesk?password=' + encodeURIComponent(document.getElementById('frontPass').value));
+            dashboardData = await res.json();
+            updateDashboard();
+        }
+
+        async function showHistory() {
+            const res = await fetch('/api/frontdesk/history?type=' + currentType + '&password=' + encodeURIComponent(document.getElementById('frontPass').value));
+            const data = await res.json();
+            const tbody = document.querySelector('#notifTable tbody');
+            tbody.innerHTML = '';
+            if (data.history && data.history.length) {
+                data.history.forEach(n => {
+                    tbody.innerHTML += `<tr>
+                        <td>${n.room}</td>
+                        <td>${n.question}</td>
+                        <td>${new Date(n.resolvedAt).toLocaleString()}</td>
+                    </tr>`;
+                });
+            } else {
+                tbody.innerHTML = '<tr><td colspan="3">暂无处理记录</td></tr>';
+            }
         }
 
         function speakNotif() {
             if (!dashboardData) return;
+            const types = { urgent:0, clean:0, car:0, food:0, extend:0 };
+            dashboardData.notifications.forEach(n => { if (types.hasOwnProperty(n.type)) types[n.type]++; });
+            const msg = `紧急通知${types.urgent}条，清扫${types.clean}条，用车${types.car}条，订餐${types.food}条，续住${types.extend}条。`;
             if ('speechSynthesis' in window) {
-                const roomCount = dashboardData.rooms ? dashboardData.rooms.length : 0;
-                const notifCount = dashboardData.notifCount || 0;
-                const utter = new SpeechSynthesisUtterance(`当前待处理通知 ${notifCount} 条，今日 ${roomCount} 个房间使用过AI管家`);
+                const utter = new SpeechSynthesisUtterance(msg);
                 utter.lang = 'zh-CN';
                 speechSynthesis.speak(utter);
             }
+        }
+
+        function startAutoRefresh() {
+            setInterval(async () => {
+                if (document.getElementById('dashboardPanel').classList.contains('hidden')) return;
+                const res = await fetch('/api/frontdesk?password=' + encodeURIComponent(document.getElementById('frontPass').value));
+                dashboardData = await res.json();
+                updateDashboard();
+            }, 30000);
         }
     </script>
 </body>
