@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>山予海 · AI智能管家</title>
+    <title>山予海 · AI管家</title>
     <link rel="icon" type="image/png" href="/favicon.png">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -136,7 +136,9 @@
                     document.getElementById('roomBadge').innerText = `${data.name || roomId + '号房'}`;
                     document.getElementById('chatRoomBadge').innerText = data.name || roomId;
                     document.getElementById('welcomePage').classList.remove('hidden');
-                } else { showExpired(); }
+                } else {
+                    showExpired();
+                }
             } catch (e) { showExpired(); }
         }
 
@@ -165,7 +167,7 @@
                 });
                 const data = await res.json();
                 const bubbles = chatBox.querySelectorAll('.message.ai .bubble');
-                bubbles[bubbles.length - 1].innerText = data.reply;
+                bubbles[bubbles.length - 1].innerText = data.reply || '抱歉，我暂时无法回答。';
             } catch (err) {
                 const bubbles = chatBox.querySelectorAll('.message.ai .bubble');
                 bubbles[bubbles.length - 1].innerText = '抱歉，网络出现问题，请稍后再试。';
