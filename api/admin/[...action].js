@@ -174,8 +174,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ items });
         }
 
-        // ===== 聊天记录 =====
-        // 房间汇总
+        // ===== 聊天记录汇总 =====
         if (action === 'chat-summary' && req.method === 'GET') {
             if (!checkAdmin()) return;
             const keys = await redis.keys('chat:*');
@@ -186,27 +185,18 @@ export default async function handler(req, res) {
                     try {
                         const log = typeof data === 'string' ? JSON.parse(data) : data;
                         const room = log.room || '未知';
-                        if (!roomsMap[room]) {
-                            roomsMap[room] = { lastTime: log.time, count: 0 };
-                        } else {
-                            if (log.time > roomsMap[room].lastTime) {
-                                roomsMap[room].lastTime = log.time;
-                            }
-                        }
+                        if (!roomsMap[room]) roomsMap[room] = { lastTime: log.time, count: 0 };
+                        else if (log.time > roomsMap[room].lastTime) roomsMap[room].lastTime = log.time;
                         roomsMap[room].count++;
                     } catch (e) {}
                 }
             }
-            const summary = Object.entries(roomsMap).map(([room, info]) => ({
-                room,
-                lastTime: info.lastTime,
-                total: info.count
-            }));
+            const summary = Object.entries(roomsMap).map(([room, info]) => ({ room, lastTime: info.lastTime, total: info.count }));
             summary.sort((a, b) => new Date(b.lastTime) - new Date(a.lastTime));
             return res.status(200).json({ summary });
         }
 
-        // 详细聊天记录（支持房间和日期筛选）
+        // 聊天详情
         if (action === 'chatlogs' && req.method === 'GET') {
             if (!checkAdmin()) return;
             const { room, date } = req.query;
@@ -217,13 +207,8 @@ export default async function handler(req, res) {
                 if (data) {
                     try {
                         const log = typeof data === 'string' ? JSON.parse(data) : data;
-                        // 房间筛选
                         if (room && log.room !== room) continue;
-                        // 日期筛选
-                        if (date) {
-                            const logDate = new Date(log.time).toISOString().slice(0, 10);
-                            if (logDate !== date) continue;
-                        }
+                        if (date && new Date(log.time).toISOString().slice(0, 10) !== date) continue;
                         logs.push({ id: key.replace('chat:', ''), ...log });
                     } catch (e) {}
                 }
@@ -243,10 +228,53 @@ export default async function handler(req, res) {
         if (action === 'chatlogs/clear' && req.method === 'POST') {
             if (!checkAdmin()) return;
             const keys = await redis.keys('chat:*');
-            for (const key of keys) {
-                await redis.del(key);
-            }
+            for (const key of keys) await redis.del(key);
             return res.status(200).json({ success: true, deleted: keys.length });
+        }
+
+        // ===== 中控台 - 关键词 =====
+        if (action === 'alert-keywords' && req.method === 'GET') {
+            if (!checkAdmin()) return;
+            const data = await redis.get('config:alert_keywords');
+            const keywords = data ? (typeof data === 'string' ? JSON.parse(data) : data) : [];
+            return res.status(200).json({ keywords });
+        }
+
+        if (action === 'alert-keywords' && req.method === 'POST') {
+            if (!checkAdmin()) return;
+            const { keywords } = req.body;
+            if (!Array.isArray(keywords)) return res.status(400).json({ error: 'keywords 必须是数组' });
+            await redis.set('config:alert_keywords', JSON.stringify(keywords));
+            return res.status(200).json({ success: true });
+        }
+
+        // ===== 通知列表 =====
+        if (action === 'notifications' && req.method === 'GET') {
+            if (!checkAdmin()) return;
+            const keys = await redis.keys('notification:*');
+            const items = [];
+            for (const key of keys) {
+                const data = await redis.get(key);
+                if (data) {
+                    const notif = typeof data === 'string' ? JSON.parse(data) : data;
+                    if (notif.status === 'pending') items.push({ id: key.replace('notification:', ''), ...notif });
+                }
+            }
+            items.sort((a, b) => new Date(b.time) - new Date(a.time));
+            return res.status(200).json({ notifications: items });
+        }
+
+        if (action === 'notifications' && req.method === 'POST') {
+            if (!checkAdmin()) return;
+            const { id } = req.body;
+            if (!id) return res.status(400).json({ error: '缺少通知ID' });
+            const notifData = await redis.get(`notification:${id}`);
+            if (!notifData) return res.status(404).json({ error: '通知不存在' });
+            const notif = typeof notifData === 'string' ? JSON.parse(notifData) : notifData;
+            notif.status = 'done';
+            notif.resolvedAt = new Date().toISOString();
+            await redis.set(`notification:${id}`, JSON.stringify(notif));
+            return res.status(200).json({ success: true });
         }
 
         return res.status(404).json({ error: '接口不存在' });
