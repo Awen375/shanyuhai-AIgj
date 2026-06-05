@@ -20,6 +20,7 @@ export default async function handler(req, res) {
 
         const roomInfo = typeof roomData === 'string' ? JSON.parse(roomData) : roomData;
         
+        // ★ 严格比对 token，不一致则返回过期
         if (roomInfo.token !== token) {
             return res.status(200).json({ valid: false, reason: 'token_expired' });
         }
