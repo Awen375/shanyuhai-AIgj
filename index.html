@@ -18,12 +18,8 @@
         }
         .container {
             text-align: center;
-            background: white;
-            border-radius: 32px;
-            padding: 50px 30px;
             max-width: 450px;
             width: 100%;
-            box-shadow: 0 25px 50px rgba(15,76,129,0.15);
         }
         .logo {
             font-size: 80px;
@@ -37,7 +33,7 @@
             cursor: pointer;
         }
         .subtitle {
-            color: #5a7d8c;
+            color: #3a5a6c;
             font-size: 16px;
             margin-bottom: 20px;
         }
@@ -48,7 +44,6 @@
             margin-top: 20px;
         }
 
-        /* 后台认证弹窗 */
         .modal-overlay {
             display: none;
             position: fixed;
@@ -97,7 +92,6 @@
         <div class="phone">📞 138xxxx1234</div>
     </div>
 
-    <!-- 后台认证弹窗 -->
     <div class="modal-overlay" id="adminModal">
         <div class="modal-box">
             <h3>🔐 管理员验证</h3>
@@ -108,6 +102,8 @@
     </div>
 
     <script>
+        const ADMIN_PASSWORD = 'zjm1314520';
+
         // 连续点击标题5次弹出后台认证
         const title = document.getElementById('mainTitle');
         let clickCount = 0;
@@ -127,7 +123,9 @@
 
         function checkAdminPass() {
             const pass = document.getElementById('adminPassInput').value;
-            if (pass === 'zjm1314520') {
+            if (pass === ADMIN_PASSWORD) {
+                // 保存登录状态，跳转后自动进入后台
+                localStorage.setItem('admin_token', ADMIN_PASSWORD);
                 window.location.href = '/admin.html';
             } else {
                 alert('密码错误');
