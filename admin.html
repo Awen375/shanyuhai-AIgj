@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>山予海 · 管家后台</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" href="/favicon.png">
+    <style>
+        body { font-family: 'PingFang SC','Microsoft YaHei',sans-serif; background: #f0f4f8; padding: 30px; }
+        .container { max-width: 1000px; margin: 0 auto; }
+        .card { background: white; border-radius: 20px; padding: 25px; margin-bottom: 25px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
+        h2 { color: #0b4f6c; margin-top: 0; cursor: pointer; }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        th, td { border-bottom: 1px solid #eee; padding: 10px 6px; text-align: left; }
+        th { background: #f8fafc; }
+        input, textarea, button, select { padding: 8px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; }
+        button { background: #1e90ff; color: white; border: none; cursor: pointer; border-radius: 20px; padding: 8px 18px; margin-right: 6px; margin-bottom: 6px; }
+        button.danger { background: #e74c3c; }
+        button.success { background: #27ae60; }
+        button.info { background: #3498db; }
+        button.warning { background: #f39c12; }
+        .flex-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 10px 0; }
+        .label { font-weight: 600; min-width: 80px; }
+        .hidden { display: none; }
+        #loginBox { max-width: 350px; margin: 100px auto; }
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 999; align-items: center; justify-content: center; }
+        .modal-content { background: white; border-radius: 20px; padding: 25px; max-width: 500px; width: 90%; text-align: center; }
+        .modal-content img { max-width: 250px; margin: 15px auto; display: block; }
+        .collapse-icon { float: right; transition: transform 0.3s; }
+        .collapsed .collapse-icon { transform: rotate(-90deg); }
+    </style>
+</head>
+<body>
+    <div id="loginBox" class="card">
+        <h2>🔐 管理员登录</h2>
+        <input type="password" id="password" placeholder="输入超级密码" style="width:100%;margin-bottom:10px;">
+        <button onclick="login()">登录</button>
+        <p id="loginError" style="color:red;"></p>
+    </div>
+
+    <div id="mainPanel" class="container hidden">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+            <h1>🤖 山予海AI管家后台</h1>
+            <button onclick="logout()" style="background:#ccc;color:#333;">退出</button>
+        </div>
+
+        <!-- 房间管理 -->
+        <div class="card">
+            <h2 onclick="togglePanel('roomPanel')">🚪 房间管理 <span class="collapse-icon">▼</span></h2>
+            <div id="roomPanel" style="display:none;">
+                <div class="flex-row">
+                    <input type="text" id="newRoomId" placeholder="房间号（如301）">
+                    <input type="text" id="newRoomName" placeholder="房间
