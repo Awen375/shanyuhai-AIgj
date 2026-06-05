@@ -28,7 +28,7 @@
         .modal-content img { max-width: 250px; margin: 15px auto; display: block; }
         .collapse-icon { float: right; transition: transform 0.3s; }
         .collapsed .collapse-icon { transform: rotate(-90deg); }
-        .notif-btn { position: relative; display: inline-block; background: #f39c12; color: white; font-weight: bold; padding: 12px 25px; border-radius: 25px; cursor: pointer; margin-top: 10px; }
+        .notif-btn { position: relative; display: inline-block; background: #f39c12; color: white; font-weight: bold; padding: 12px 25px; border-radius: 25px; cursor: pointer; margin-right: 12px; }
         .badge { position: absolute; top: -10px; right: -10px; background: red; color: white; border-radius: 50%; width: 24px; height: 24px; font-size: 12px; line-height: 24px; text-align: center; display: none; }
     </style>
 </head>
@@ -54,8 +54,12 @@
                 <input type="text" id="alertKeywords" placeholder="多个用逗号分隔，如：投诉,紧急,漏水" style="flex:1; max-width:400px;">
                 <button onclick="saveAlertKeywords()">💾 保存</button>
             </div>
-            <div class="notif-btn" onclick="showNotifications()">
-                🔔 通知 <span id="notifBadge" class="badge">0</span>
+            <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+                <div class="notif-btn" onclick="showNotifications()">
+                    🔔 通知 <span id="notifBadge" class="badge">0</span>
+                </div>
+                <button onclick="showHistory()" style="background:#3498db; color:white;">📋 已处理通知</button>
+                <button onclick="showFrontdeskSettings()" style="background:#2ecc71; color:white;">🏨 进入前台端</button>
             </div>
         </div>
 
@@ -125,7 +129,7 @@
         </div>
     </div>
 
-    <!-- 通知列表弹窗 -->
+    <!-- 通知列表弹窗（待处理） -->
     <div id="notifModal" class="modal-overlay">
         <div class="modal-content" style="max-width:700px;">
             <h3>📋 待处理通知</h3>
@@ -134,6 +138,35 @@
                 <tbody></tbody>
             </table>
             <button onclick="document.getElementById('notifModal').style.display='none'" style="background:#ccc;color:#333;">关闭</button>
+        </div>
+    </div>
+
+    <!-- 已处理通知弹窗 -->
+    <div id="historyModal" class="modal-overlay">
+        <div class="modal-content" style="max-width:700px;">
+            <h3>📋 已处理通知</h3>
+            <table id="historyTable">
+                <thead><tr><th>处理时间</th><th>房间</th><th>匹配词</th><th>问题</th><th>回复</th></tr></thead>
+                <tbody></tbody>
+            </table>
+            <button onclick="document.getElementById('historyModal').style.display='none'" style="background:#ccc;color:#333;">关闭</button>
+        </div>
+    </div>
+
+    <!-- 前台端设置弹窗 -->
+    <div id="frontdeskModal" class="modal-overlay">
+        <div class="modal-content" style="max-width:400px;">
+            <h3>🏨 前台端设置</h3>
+            <div class="flex-row">
+                <span>密码：</span>
+                <input type="text" id="frontdeskPassword" placeholder="设置前台端密码">
+                <button onclick="saveFrontdeskPassword()">💾 保存</button>
+            </div>
+            <div style="margin-top:20px;">
+                <p>当前密码：<strong id="currentFrontPwd"></strong></p>
+                <button onclick="openFrontdesk()" class="success">🚪 进入前台端</button>
+            </div>
+            <button onclick="document.getElementById('frontdeskModal').style.display='none'" style="background:#ccc;color:#333; margin-top:10px;">关闭</button>
         </div>
     </div>
 
@@ -324,7 +357,7 @@
             loadUnanswered();
         }
 
-        // ===== 聊天记录（按房间） =====
+        // ===== 聊天记录 =====
         async function loadChatSummary() {
             const res = await fetch('/api/admin/chat-summary', { headers: { 'x-admin-token': token() } });
             const data = await res.json();
@@ -485,6 +518,53 @@
             });
             loadNotifList();
             checkNotifications();
+        }
+
+        // 已处理通知
+        async function showHistory() {
+            document.getElementById('historyModal').style.display = 'flex';
+            const res = await fetch('/api/admin/notifications-history', { headers: { 'x-admin-token': token() } });
+            const data = await res.json();
+            const tbody = document.querySelector('#historyTable tbody');
+            tbody.innerHTML = '';
+            if (data.history && data.history.length > 0) {
+                data.history.forEach(n => {
+                    tbody.innerHTML += `<tr>
+                        <td>${new Date(n.resolvedAt).toLocaleString()}</td>
+                        <td>${n.room}</td>
+                        <td>${n.matchedKeyword}</td>
+                        <td>${n.question.substring(0, 15)}...</td>
+                        <td>${n.reply.substring(0, 20)}...</td>
+                    </tr>`;
+                });
+            } else {
+                tbody.innerHTML = '<tr><td colspan="5">暂无已处理通知</td></tr>';
+            }
+        }
+
+        // 前台端设置
+        async function showFrontdeskSettings() {
+            document.getElementById('frontdeskModal').style.display = 'flex';
+            const res = await fetch('/api/admin/frontdesk-password', { headers: { 'x-admin-token': token() } });
+            const data = await res.json();
+            document.getElementById('frontdeskPassword').value = data.password || '1234';
+            document.getElementById('currentFrontPwd').innerText = data.password || '1234';
+        }
+
+        async function saveFrontdeskPassword() {
+            const password = document.getElementById('frontdeskPassword').value.trim();
+            if (!password) return alert('密码不能为空');
+            await fetch('/api/admin/frontdesk-password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-admin-token': token() },
+                body: JSON.stringify({ password })
+            });
+            document.getElementById('currentFrontPwd').innerText = password;
+            alert('密码已更新');
+        }
+
+        function openFrontdesk() {
+            window.open('/frontdesk.html', '_blank');
         }
 
         setInterval(checkNotifications, 10000);
