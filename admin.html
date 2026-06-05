@@ -30,7 +30,7 @@
         .collapsed .collapse-icon { transform: rotate(-90deg); }
         .notif-btn { position: relative; display: inline-block; background: #f39c12; color: white; font-weight: bold; padding: 12px 25px; border-radius: 25px; cursor: pointer; margin-right: 12px; }
         .badge { position: absolute; top: -10px; right: -10px; background: red; color: white; border-radius: 50%; width: 24px; height: 24px; font-size: 12px; line-height: 24px; text-align: center; display: none; }
-        .keyword-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+        .keyword-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
         .keyword-row input { flex:1; }
         .keyword-row select { width:120px; }
     </style>
@@ -52,7 +52,7 @@
         <!-- 中控数据台（不可折叠） -->
         <div class="card" style="border:2px solid #e74c3c;">
             <h2>🖥️ 中控数据台</h2>
-            <div><strong>🔔 关键词设置（独立+类型）</strong></div>
+            <div><strong>🔔 关键词设置（独立+类型+回复）</strong></div>
             <div id="keywordList"></div>
             <button onclick="addKeywordRow()">➕ 添加关键词</button>
             <button onclick="saveKeywords()" style="margin-left:10px;">💾 保存</button>
@@ -430,7 +430,7 @@
             loadChatSummary();
         }
 
-        // ===== 中控台 - 关键词（独立+类型） =====
+        // ===== 中控台 - 关键词（独立+类型+回复） =====
         let keywordsData = [];
 
         async function loadKeywords() {
@@ -444,8 +444,8 @@
             const container = document.getElementById('keywordList');
             container.innerHTML = keywordsData.map((item, index) => `
                 <div class="keyword-row">
-                    <input type="text" value="${item.keyword}" placeholder="关键词" onchange="updateKeyword(${index}, 'keyword', this.value)">
-                    <select onchange="updateKeyword(${index}, 'type', this.value)">
+                    <input type="text" value="${item.keyword || ''}" placeholder="关键词" style="flex:1;" onchange="updateKeyword(${index}, 'keyword', this.value)">
+                    <select onchange="updateKeyword(${index}, 'type', this.value)" style="width:100px;">
                         <option value="urgent" ${item.type === 'urgent' ? 'selected' : ''}>紧急通知</option>
                         <option value="clean" ${item.type === 'clean' ? 'selected' : ''}>清扫任务</option>
                         <option value="car" ${item.type === 'car' ? 'selected' : ''}>用车服务</option>
@@ -453,13 +453,14 @@
                         <option value="extend" ${item.type === 'extend' ? 'selected' : ''}>续住需求</option>
                         <option value="other" ${item.type === 'other' ? 'selected' : ''}>其他</option>
                     </select>
+                    <input type="text" value="${item.reply || ''}" placeholder="回复内容（可选）" style="flex:2;" onchange="updateKeyword(${index}, 'reply', this.value)">
                     <button onclick="removeKeywordRow(${index})" class="danger">删除</button>
                 </div>
             `).join('');
         }
 
         function addKeywordRow() {
-            keywordsData.push({ keyword: '', type: 'urgent' });
+            keywordsData.push({ keyword: '', type: 'urgent', reply: '' });
             renderKeywords();
         }
 
