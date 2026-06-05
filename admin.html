@@ -28,6 +28,8 @@
         .modal-content img { max-width: 250px; margin: 15px auto; display: block; }
         .collapse-icon { float: right; transition: transform 0.3s; }
         .collapsed .collapse-icon { transform: rotate(-90deg); }
+        .notif-btn { position: relative; display: inline-block; background: #f39c12; color: white; font-weight: bold; padding: 12px 25px; border-radius: 25px; cursor: pointer; margin-top: 10px; }
+        .badge { position: absolute; top: -10px; right: -10px; background: red; color: white; border-radius: 50%; width: 24px; height: 24px; font-size: 12px; line-height: 24px; text-align: center; display: none; }
     </style>
 </head>
 <body>
@@ -42,6 +44,19 @@
         <div style="display:flex;justify-content:space-between;align-items:center;">
             <h1>🤖 山予海AI管家后台</h1>
             <button onclick="logout()" style="background:#ccc;color:#333;">退出</button>
+        </div>
+
+        <!-- 中控数据台（不可折叠） -->
+        <div class="card" style="border: 2px solid #e74c3c;">
+            <h2>🖥️ 中控数据台</h2>
+            <div class="flex-row" style="margin-bottom: 15px;">
+                <span class="label">🔔 关键词：</span>
+                <input type="text" id="alertKeywords" placeholder="多个用逗号分隔，如：投诉,紧急,漏水" style="flex:1; max-width:400px;">
+                <button onclick="saveAlertKeywords()">💾 保存</button>
+            </div>
+            <div class="notif-btn" onclick="showNotifications()">
+                🔔 通知 <span id="notifBadge" class="badge">0</span>
+            </div>
         </div>
 
         <!-- 房间管理 -->
@@ -98,7 +113,7 @@
             </div>
         </div>
 
-        <!-- 聊天记录（新设计） -->
+        <!-- 聊天记录（按房间） -->
         <div class="card">
             <h2 onclick="togglePanel('chatPanel')">💬 聊天记录（按房间） <span class="collapse-icon">▼</span></h2>
             <div id="chatPanel" style="display:none;">
@@ -107,6 +122,18 @@
                     <tbody></tbody>
                 </table>
             </div>
+        </div>
+    </div>
+
+    <!-- 通知列表弹窗 -->
+    <div id="notifModal" class="modal-overlay">
+        <div class="modal-content" style="max-width:700px;">
+            <h3>📋 待处理通知</h3>
+            <table id="notifTable">
+                <thead><tr><th>时间</th><th>房间</th><th>匹配词</th><th>客人问题</th><th>AI回复</th><th>操作</th></tr></thead>
+                <tbody></tbody>
+            </table>
+            <button onclick="document.getElementById('notifModal').style.display='none'" style="background:#ccc;color:#333;">关闭</button>
         </div>
     </div>
 
@@ -319,7 +346,6 @@
 
         async function openRoomChat(room) {
             document.getElementById('detailRoom').innerText = room;
-            // 加载可用日期
             const res = await fetch(`/api/admin/chatlogs?room=${room}`, { headers: { 'x-admin-token': token() } });
             const data = await res.json();
             const dates = new Set();
@@ -332,7 +358,6 @@
             Array.from(dates).sort().reverse().forEach(d => {
                 select.innerHTML += `<option value="${d}">${d}</option>`;
             });
-            // 默认加载全部
             loadRoomDetail();
             document.getElementById('chatDetailModal').style.display = 'flex';
         }
@@ -366,14 +391,111 @@
                 body: JSON.stringify({ id })
             });
             loadRoomDetail();
-            loadChatSummary(); // 刷新汇总
+            loadChatSummary();
         }
 
-        async function loadAll() {
+        // ===== 中控数据台 =====
+        let lastNotifCount = 0;
+        let lastAlertTime = 0;
+
+        async function loadAlertKeywords() {
+            const res = await fetch('/api/admin/alert-keywords', { headers: { 'x-admin-token': token() } });
+            const data = await res.json();
+            document.getElementById('alertKeywords').value = (data.keywords || []).join(',');
+        }
+
+        async function saveAlertKeywords() {
+            const raw = document.getElementById('alertKeywords').value.trim();
+            const keywords = raw ? raw.split(',').map(k => k.trim()).filter(Boolean) : [];
+            await fetch('/api/admin/alert-keywords', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-admin-token': token() },
+                body: JSON.stringify({ keywords })
+            });
+            alert('关键词已保存');
+        }
+
+        function speak(text) {
+            if ('speechSynthesis' in window) {
+                const utter = new SpeechSynthesisUtterance(text);
+                utter.lang = 'zh-CN';
+                utter.rate = 1.0;
+                speechSynthesis.speak(utter);
+            }
+        }
+
+        async function checkNotifications() {
+            if (!token()) return;
+            try {
+                const res = await fetch('/api/admin/notifications', { headers: { 'x-admin-token': token() } });
+                const data = await res.json();
+                const count = data.notifications ? data.notifications.length : 0;
+                const badge = document.getElementById('notifBadge');
+                if (count > 0) {
+                    badge.style.display = 'inline-block';
+                    badge.innerText = count;
+                    if (count > lastNotifCount) {
+                        speak('收到新通知，请注意处理');
+                        setTimeout(() => speak('收到新通知，请注意处理'), 1500);
+                    }
+                    const now = Date.now();
+                    if (now - lastAlertTime > 60000) {
+                        speak(`还有 ${count} 条待处理通知`);
+                        lastAlertTime = now;
+                    }
+                } else {
+                    badge.style.display = 'none';
+                }
+                lastNotifCount = count;
+            } catch (e) {}
+        }
+
+        async function showNotifications() {
+            document.getElementById('notifModal').style.display = 'flex';
+            await loadNotifList();
+        }
+
+        async function loadNotifList() {
+            const res = await fetch('/api/admin/notifications', { headers: { 'x-admin-token': token() } });
+            const data = await res.json();
+            const tbody = document.querySelector('#notifTable tbody');
+            tbody.innerHTML = '';
+            if (data.notifications && data.notifications.length > 0) {
+                data.notifications.forEach(n => {
+                    tbody.innerHTML += `<tr>
+                        <td>${new Date(n.time).toLocaleString()}</td>
+                        <td>${n.room}</td>
+                        <td style="color:red;">${n.matchedKeyword}</td>
+                        <td>${n.question.substring(0, 15)}...</td>
+                        <td>${n.reply.substring(0, 20)}...</td>
+                        <td><button onclick="handleNotif('${n.id}')" class="success">✅ 处理完成</button></td>
+                    </tr>`;
+                });
+            } else {
+                tbody.innerHTML = '<tr><td colspan="6">暂无通知</td></tr>';
+            }
+        }
+
+        async function handleNotif(id) {
+            if (!confirm('确定标记为已处理？')) return;
+            await fetch('/api/admin/notifications', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-admin-token': token() },
+                body: JSON.stringify({ id })
+            });
+            loadNotifList();
+            checkNotifications();
+        }
+
+        setInterval(checkNotifications, 10000);
+
+        function loadAll() {
             loadRooms();
             loadAISettings();
             loadUnanswered();
             loadChatSummary();
+            loadAlertKeywords();
+            checkNotifications();
         }
     </script>
 </body>
