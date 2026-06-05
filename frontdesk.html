@@ -3,12 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>山予海AI管家前台端</title>
+    <title>山予海 · 前台端</title>
     <link rel="icon" type="image/png" href="/favicon.png">
     <style>
         body { 
             font-family: 'PingFang SC','Microsoft YaHei',sans-serif; 
-            background: #f0f4f8; 
+            /* 更换背景：渐变或图片 */
+            background: linear-gradient(135deg, #0b4f6c 0%, #1e90ff 100%);
+            /* 若使用图片，替换为： background: url('/bg.jpg') center/cover no-repeat; */
             display: flex; justify-content: center; align-items: center; 
             min-height: 100vh; padding: 20px; 
         }
@@ -74,18 +76,18 @@
 </head>
 <body>
     <div class="container">
-        <!-- 登录界面 -->
+        <!-- 登录界面（唯一） -->
         <div id="loginPanel" class="login-box">
-            <img src="/logo.jpg" alt="logo" class="logo-icon" style="width: 80px; height: auto;" />
+            <div class="logo">🌊</div>
             <h2>山予海AI管家前台端</h2>
             <input type="password" id="frontPass" placeholder="输入密码" style="width:100%; padding:12px; margin:15px 0; border-radius:12px; border:1px solid #ddd;">
             <button id="loginBtn" onclick="login()">进入前台</button>
             <p id="loginMsg" style="color:red;"></p>
         </div>
 
-        <!-- 数据看板 -->
+        <!-- 数据看板（登录后显示） -->
         <div id="dashboardPanel" class="dashboard hidden">
-            <img src="/logo.jpg" alt="logo" class="logo-icon" style="width: 80px; height: auto;" />
+            <div class="logo">🌊</div>
             <h2>山予海AI管家前台端</h2>
             <div class="card-row">
                 <div class="type-card" onclick="openUsageList()">
@@ -202,7 +204,6 @@
             document.getElementById('cnt_food').innerText = current.food;
             document.getElementById('cnt_extend').innerText = current.extend;
 
-            // 检查是否所有通知都已处理
             const allZero = Object.values(current).every(v => v === 0);
             if (allZero) {
                 if (alertInterval) {
@@ -223,7 +224,6 @@
                 if (changes.length > 0) {
                     speak('收到新通知：' + changes.join('，'));
                 }
-                // 重置或启动30秒重复播报定时器
                 if (alertInterval) clearInterval(alertInterval);
                 alertInterval = setInterval(() => {
                     if (document.getElementById('dashboardPanel').classList.contains('hidden')) {
@@ -241,7 +241,7 @@
                         clearInterval(alertInterval);
                         alertInterval = null;
                     }
-                }, 30000); // 30秒
+                }, 30000);
             }
             previousCounts = { ...current };
         }
@@ -307,380 +307,6 @@
                 await loadNotifications(typeKey);
                 const res = await fetch(BASE + '?password=' + encodeURIComponent(pass));
                 dashboardData = await res.json();
-                updateDashboard(false);
-            }
-        }
-
-        async function showHistory() {
-            const pass = PASSWORD();
-            const title = document.getElementById('listTitle').innerText;
-            const typeMap = { '紧急通知':'urgent', '清扫任务':'clean', '用车服务':'car', '订餐服务':'food', '续住需求':'extend' };
-            const typeKey = Object.entries(typeMap).find(([k,v]) => title.includes(k))?.[1];
-            if (!typeKey) return;
-            const res = await fetch(`${BASE}/notifications?password=${encodeURIComponent(pass)}&type=${typeKey}&history=1`);
-            const data = await res.json();
-            const tbody = document.querySelector('#notifTable tbody');
-            tbody.innerHTML = '';
-            if (data.history && data.history.length) {
-                data.history.forEach(n => {
-                    tbody.innerHTML += `<tr>
-                        <td>${n.room}</td>
-                        <td>${n.question}</td>
-                        <td>${new Date(n.resolvedAt).toLocaleString()}</td>
-                    </tr>`;
-                });
-            } else {
-                tbody.innerHTML = '<tr><td colspan="3">暂无处理记录</td></tr>';
-            }
-        }
-
-        async function openTodayStats() {
-            const pass = PASSWORD();
-            const res = await fetch(`${BASE}/notifications?password=${encodeURIComponent(pass)}&history=1`);
-            const data = await res.json();
-            const todayStr = new Date().toISOString().slice(0, 10);
-            const todayItems = (data.history || []).filter(n => n.resolvedAt && n.resolvedAt.startsWith(todayStr));
-            
-            document.getElementById('listTitle').innerText = '今日处理统计';
-            document.getElementById('historyBtn').style.display = 'none';
-            const tbody = document.querySelector('#notifTable tbody');
-            tbody.innerHTML = '';
-            if (todayItems.length > 0) {
-                todayItems.forEach(n => {
-                    tbody.innerHTML += `<tr>
-                        <td>${n.room}</td>
-                        <td>${n.question}</td>
-                        <td>${new Date(n.resolvedAt).toLocaleString()}</td>
-                    </tr>`;
-                });
-            } else {
-                tbody.innerHTML = '<tr><td colspan="3">今日暂无处理记录</td></tr>';
-            }
-            document.getElementById('listModal').style.display = 'flex';
-        }
-
-        function startAutoRefresh() {
-            setInterval(async () => {
-                if (document.getElementById('dashboardPanel').classList.contains('hidden')) return;
-                const pass = PASSWORD();
-                const res = await fetch(BASE + '?password=' + encodeURIComponent(pass));
-                dashboardData = await res.json();
-                updateDashboard();
-            }, 30000);
-        }
-
-        function startAlertCheck() {
-            setInterval(() => {
-                if (document.getElementById('dashboardPanel').classList.contains('hidden')) return;
-                updateDashboard();
-            }, 60000);
-        }
-    </script>
-</body>
-</html><!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>山予海前台端</title>
-    <link rel="icon" type="image/png" href="/favicon.png">
-    <style>
-        body { 
-            font-family: 'PingFang SC','Microsoft YaHei',sans-serif; 
-            background: #f0f4f8; 
-            display: flex; justify-content: center; align-items: center; 
-            min-height: 100vh; padding: 20px; 
-        }
-        .container { max-width: 800px; width: 100%; }
-        .login-box { 
-            background: white; border-radius: 20px; padding: 30px; 
-            text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.05); 
-        }
-        .dashboard { 
-            background: white; border-radius: 20px; padding: 30px; 
-            text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.05); 
-            position: relative;
-        }
-        .logo { font-size: 60px; margin-bottom: 10px; }
-        h2 { color: #0b4f6c; margin-bottom: 30px; }
-        .card-row { 
-            display: flex; justify-content: space-between; 
-            gap: 10px; flex-wrap: wrap; margin-bottom: 30px;
-        }
-        .type-card { 
-            flex: 1 0 auto; min-width: 100px; 
-            background: #f8fafc; border-radius: 15px; 
-            padding: 15px 10px; cursor: pointer; 
-            transition: all 0.2s; text-align: center;
-        }
-        .type-card:hover { background: #e8f4fd; }
-        .type-card .label { font-size: 14px; color: #555; margin-bottom: 8px; }
-        .type-card .count { font-size: 32px; font-weight: 700; color: #0b4f6c; }
-        .modal-overlay { 
-            display: none; position: fixed; top: 0; left: 0; 
-            width: 100%; height: 100%; background: rgba(0,0,0,0.5); 
-            z-index: 999; align-items: center; justify-content: center; 
-        }
-        .modal-content { 
-            background: white; border-radius: 20px; padding: 25px; 
-            width: 90%; max-width: 500px; max-height: 70vh; overflow-y: auto; 
-        }
-        table { width: 100%; border-collapse: collapse; font-size: 14px; }
-        th, td { border-bottom: 1px solid #eee; padding: 10px 6px; text-align: left; }
-        button { 
-            padding: 10px 20px; background: #1e90ff; color: white; 
-            border: none; border-radius: 25px; cursor: pointer; font-weight: 600; 
-        }
-        button.success { background: #27ae60; }
-        button.danger { background: #e74c3c; }
-        .hidden { display: none; }
-
-        .support-text {
-            margin-top: 20px;
-            font-size: 12px;
-            color: #888;
-            text-align: center;
-        }
-        .today-stats-link {
-            font-size: 12px;
-            color: #3498db;
-            cursor: pointer;
-            text-decoration: underline;
-            margin-top: 5px;
-            text-align: center;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <!-- 登录界面 -->
-        <div id="loginPanel" class="login-box">
-          <img src="/logo.jpg" alt="Logo" style="height: 80px; vertical-align: middle;" />
-            <h2>山予海AI管家前台端</h2>
-            <input type="password" id="frontPass" placeholder="输入密码" style="width:100%; padding:12px; margin:15px 0; border-radius:12px; border:1px solid #ddd;">
-            <button id="loginBtn" onclick="login()">进入前台</button>
-            <p id="loginMsg" style="color:red;"></p>
-        </div>
-
-        <!-- 数据看板 -->
-        <div id="dashboardPanel" class="dashboard hidden">
-            <img src="/logo.jpg" alt="Logo" style="height: 80px; vertical-align: middle;" />
-            <h2>山予海AI管家前台端</h2>
-            <div class="card-row">
-                <div class="type-card" onclick="openUsageList()">
-                    <div class="label">今日AI管家使用</div>
-                    <div class="count" id="cnt_usage">0</div>
-                </div>
-                <div class="type-card" onclick="openNotifyList('urgent')">
-                    <div class="label">紧急通知</div>
-                    <div class="count" id="cnt_urgent">0</div>
-                </div>
-                <div class="type-card" onclick="openNotifyList('clean')">
-                    <div class="label">清扫任务</div>
-                    <div class="count" id="cnt_clean">0</div>
-                </div>
-                <div class="type-card" onclick="openNotifyList('car')">
-                    <div class="label">用车服务</div>
-                    <div class="count" id="cnt_car">0</div>
-                </div>
-                <div class="type-card" onclick="openNotifyList('food')">
-                    <div class="label">订餐服务</div>
-                    <div class="count" id="cnt_food">0</div>
-                </div>
-                <div class="type-card" onclick="openNotifyList('extend')">
-                    <div class="label">续住需求</div>
-                    <div class="count" id="cnt_extend">0</div>
-                </div>
-            </div>
-
-            <div class="support-text">本程序由，山予海AI大模型团队提供技术支持</div>
-            <div class="today-stats-link" onclick="openTodayStats()">📊 今日处理统计</div>
-        </div>
-    </div>
-
-    <!-- 列表弹窗（共用） -->
-    <div id="listModal" class="modal-overlay">
-        <div class="modal-content">
-            <h4 id="listTitle"></h4>
-            <button id="historyBtn" onclick="showHistory()" style="margin-bottom:10px; background:#3498db;">处理记录</button>
-            <table id="notifTable"><tbody></tbody></table>
-            <button onclick="document.getElementById('listModal').style.display='none'">关闭</button>
-        </div>
-    </div>
-
-    <script>
-        let dashboardData = null;
-        let previousCounts = { usage:0, urgent:0, clean:0, car:0, food:0, extend:0 };
-        let alertInterval = null;
-        const PASSWORD = () => localStorage.getItem('front_password') || '';
-        const BASE = '/api/frontdesk';
-
-        async function speak(text) {
-            if (!('speechSynthesis' in window)) return;
-            window.speechSynthesis.cancel();
-            const utter = new SpeechSynthesisUtterance(text);
-            utter.lang = 'zh-CN';
-            utter.rate = 1.0;
-            utter.pitch = 1.0;
-
-            try {
-                const res = await fetch(`${BASE}/voice?password=${encodeURIComponent(PASSWORD())}`);
-                const data = await res.json();
-                if (data.voice) {
-                    const voices = window.speechSynthesis.getVoices();
-                    const selected = voices.find(v => v.name === data.voice);
-                    if (selected) utter.voice = selected;
-                }
-            } catch (e) {}
-
-            if (window.speechSynthesis.getVoices().length === 0) {
-                window.speechSynthesis.onvoiceschanged = () => {
-                    speak(text);
-                };
-                return;
-            }
-            window.speechSynthesis.speak(utter);
-        }
-
-        async function login() {
-            const pass = document.getElementById('frontPass').value;
-            const res = await fetch(BASE + '?password=' + encodeURIComponent(pass));
-            const data = await res.json();
-            if (data.valid) {
-                localStorage.setItem('front_password', pass);
-                document.getElementById('loginPanel').classList.add('hidden');
-                document.getElementById('dashboardPanel').classList.remove('hidden');
-                dashboardData = data;
-                updateDashboard(true);
-                startAutoRefresh();
-                startAlertCheck();
-            } else {
-                document.getElementById('loginMsg').innerText = '密码错误';
-            }
-        }
-
-        function countByType(notifications) {
-            const counts = { urgent:0, clean:0, car:0, food:0, extend:0 };
-            if (notifications) {
-                notifications.forEach(n => {
-                    if (counts.hasOwnProperty(n.type)) counts[n.type]++;
-                });
-            }
-            return counts;
-        }
-
-        function updateDashboard(skipVoice = false) {
-            const notifications = dashboardData?.notifications || [];
-            const current = countByType(notifications);
-            current.usage = dashboardData?.todayRooms?.length || 0;
-
-            document.getElementById('cnt_usage').innerText = current.usage;
-            document.getElementById('cnt_urgent').innerText = current.urgent;
-            document.getElementById('cnt_clean').innerText = current.clean;
-            document.getElementById('cnt_car').innerText = current.car;
-            document.getElementById('cnt_food').innerText = current.food;
-            document.getElementById('cnt_extend').innerText = current.extend;
-
-            // 检查是否所有通知都已处理
-            const allZero = Object.values(current).every(v => v === 0);
-            if (allZero) {
-                if (alertInterval) {
-                    clearInterval(alertInterval);
-                    alertInterval = null;
-                }
-                // 重置计数，避免下次误判增量
-                previousCounts = { ...current };
-                return;
-            }
-
-            if (!skipVoice) {
-                const changes = [];
-                for (const type of ['urgent','clean','car','food','extend']) {
-                    if (current[type] > previousCounts[type]) {
-                        changes.push(getTypeName(type) + ' ' + current[type] + ' 条');
-                    }
-                }
-                if (changes.length > 0) {
-                    speak('收到新通知：' + changes.join('，'));
-                    if (alertInterval) clearInterval(alertInterval);
-                    alertInterval = setInterval(() => {
-                        if (document.getElementById('dashboardPanel').classList.contains('hidden')) {
-                            clearInterval(alertInterval);
-                            return;
-                        }
-                        const nums = [];
-                        for (const type of ['urgent','clean','car','food','extend']) {
-                            if (current[type] > 0) nums.push(getTypeName(type) + current[type] + '条');
-                        }
-                        if (nums.length > 0) speak('待处理提醒：' + nums.join('，'));
-                    }, 600000);
-                }
-            }
-            previousCounts = { ...current };
-        }
-
-        function getTypeName(type) {
-            const map = { usage:'今日使用', urgent:'紧急通知', clean:'清扫任务', car:'用车服务', food:'订餐服务', extend:'续住需求' };
-            return map[type] || '';
-        }
-
-        async function openUsageList() {
-            const rooms = dashboardData?.todayRooms || [];
-            document.getElementById('listTitle').innerText = '今日使用房间';
-            document.getElementById('historyBtn').style.display = 'none';
-            const tbody = document.querySelector('#notifTable tbody');
-            tbody.innerHTML = '';
-            if (rooms.length > 0) {
-                rooms.forEach(room => {
-                    tbody.innerHTML += `<tr><td>${room}</td></tr>`;
-                });
-            } else {
-                tbody.innerHTML = '<tr><td>暂无房间使用</td></tr>';
-            }
-            document.getElementById('listModal').style.display = 'flex';
-        }
-
-        async function openNotifyList(type) {
-            document.getElementById('listTitle').innerText = getTypeName(type) + ' 待处理列表';
-            document.getElementById('historyBtn').style.display = 'inline-block';
-            await loadNotifications(type);
-            document.getElementById('listModal').style.display = 'flex';
-        }
-
-        async function loadNotifications(type) {
-            const pass = PASSWORD();
-            const res = await fetch(`${BASE}/notifications?password=${encodeURIComponent(pass)}&type=${type}`);
-            const data = await res.json();
-            const tbody = document.querySelector('#notifTable tbody');
-            tbody.innerHTML = '';
-            if (data.notifications && data.notifications.length) {
-                data.notifications.forEach(n => {
-                    tbody.innerHTML += `<tr>
-                        <td>${n.room}</td>
-                        <td>${n.question}</td>
-                        <td><button onclick="handleNotif('${n.id}')" class="success">处理完成</button></td>
-                    </tr>`;
-                });
-            } else {
-                tbody.innerHTML = '<tr><td colspan="3">暂无数据</td></tr>';
-            }
-        }
-
-        async function handleNotif(id) {
-            const pass = PASSWORD();
-            await fetch(`${BASE}/notifications`, {
-                method: 'POST',
-                headers: {'Content-Type':'application/json'},
-                body: JSON.stringify({ id, password: pass })
-            });
-            const title = document.getElementById('listTitle').innerText;
-            const typeMap = { '紧急通知':'urgent', '清扫任务':'clean', '用车服务':'car', '订餐服务':'food', '续住需求':'extend' };
-            const typeKey = Object.entries(typeMap).find(([k,v]) => title.includes(k))?.[1];
-            if (typeKey) {
-                await loadNotifications(typeKey);
-                const res = await fetch(BASE + '?password=' + encodeURIComponent(pass));
-                dashboardData = await res.json();
-                // 强制刷新并允许检查播报关闭
                 updateDashboard(false);
             }
         }
