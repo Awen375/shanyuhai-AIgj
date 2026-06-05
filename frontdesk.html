@@ -68,7 +68,7 @@
                     <div class="label">续住需求</div>
                 </div>
             </div>
-            <button onclick="speakNotif()" style="margin-top:20px;">🔊 播报通知</button>
+            <button onclick="speakAll()" style="margin-top:20px;">🔊 播报当前状态</button>
         </div>
     </div>
 
@@ -84,43 +84,81 @@
 
     <script>
         let dashboardData = null;
-        let currentType = '';
+        let previousCounts = { usage:0, urgent:0, clean:0, car:0, food:0, extend:0 };
+        let alertInterval = null;
+        const PASSWORD = () => localStorage.getItem('front_password') || '';
+        const BASE = '/api/frontdesk';
+
+        function speak(text) {
+            if ('speechSynthesis' in window) {
+                const utter = new SpeechSynthesisUtterance(text);
+                utter.lang = 'zh-CN';
+                utter.rate = 1.0;
+                speechSynthesis.speak(utter);
+            }
+        }
 
         async function login() {
             const pass = document.getElementById('frontPass').value;
-            const res = await fetch('/api/frontdesk?password=' + encodeURIComponent(pass));
+            const res = await fetch(BASE + '?password=' + encodeURIComponent(pass));
             const data = await res.json();
             if (data.valid) {
+                localStorage.setItem('front_password', pass);
                 document.getElementById('loginPanel').classList.add('hidden');
                 document.getElementById('dashboardPanel').classList.remove('hidden');
                 dashboardData = data;
-                updateDashboard();
+                updateDashboard(true);
                 startAutoRefresh();
+                startAlertCheck();
             } else {
                 document.getElementById('loginMsg').innerText = '密码错误';
             }
         }
 
-        function updateDashboard() {
-            const types = { usage:0, urgent:0, clean:0, car:0, food:0, extend:0 };
-            if (dashboardData.notifications) {
-                dashboardData.notifications.forEach(n => {
-                    if (types.hasOwnProperty(n.type)) types[n.type]++;
+        function countByType(notifications) {
+            const counts = { usage:0, urgent:0, clean:0, car:0, food:0, extend:0 };
+            if (notifications) {
+                notifications.forEach(n => {
+                    if (counts.hasOwnProperty(n.type)) counts[n.type]++;
                 });
             }
-            document.getElementById('cnt_usage').innerText = dashboardData.todayRooms ? dashboardData.todayRooms.length : 0;
-            document.getElementById('cnt_urgent').innerText = types.urgent;
-            document.getElementById('cnt_clean').innerText = types.clean;
-            document.getElementById('cnt_car').innerText = types.car;
-            document.getElementById('cnt_food').innerText = types.food;
-            document.getElementById('cnt_extend').innerText = types.extend;
+            return counts;
         }
 
-        async function openList(type) {
-            currentType = type;
-            document.getElementById('listTitle').innerText = getTypeName(type) + ' 待处理列表';
-            document.getElementById('listModal').style.display = 'flex';
-            await loadNotifList(type);
+        function updateDashboard(skipVoice = false) {
+            const notifications = dashboardData?.notifications || [];
+            const current = countByType(notifications);
+            current.usage = dashboardData?.todayRooms?.length || 0;
+
+            const ids = ['usage','urgent','clean','car','food','extend'];
+            ids.forEach(id => {
+                document.getElementById('cnt_' + id).innerText = current[id];
+            });
+
+            // 检查变化并播报
+            if (!skipVoice) {
+                const changes = [];
+                ids.forEach(id => {
+                    if (current[id] > previousCounts[id]) {
+                        changes.push(getTypeName(id) + ' ' + current[id] + ' 条');
+                    }
+                });
+                if (changes.length > 0) {
+                    speak('收到新通知：' + changes.join('，'));
+                    // 每十分钟重复提醒
+                    if (alertInterval) clearInterval(alertInterval);
+                    alertInterval = setInterval(() => {
+                        if (document.getElementById('dashboardPanel').classList.contains('hidden')) {
+                            clearInterval(alertInterval);
+                            return;
+                        }
+                        const nums = [];
+                        ids.forEach(id => { if (current[id] > 0) nums.push(getTypeName(id) + current[id] + '条'); });
+                        if (nums.length > 0) speak('待处理提醒：' + nums.join('，'));
+                    }, 600000); // 10分钟
+                }
+            }
+            previousCounts = { ...current };
         }
 
         function getTypeName(type) {
@@ -128,8 +166,15 @@
             return map[type] || '';
         }
 
-        async function loadNotifList(type) {
-            const res = await fetch('/api/frontdesk/notifications?type=' + type + '&password=' + encodeURIComponent(document.getElementById('frontPass').value));
+        async function openList(type) {
+            document.getElementById('listTitle').innerText = getTypeName(type) + ' 待处理列表';
+            document.getElementById('listModal').style.display = 'flex';
+            await loadNotifications(type);
+        }
+
+        async function loadNotifications(type) {
+            const pass = PASSWORD();
+            const res = await fetch(`${BASE}/notifications?password=${encodeURIComponent(pass)}&type=${type}`);
             const data = await res.json();
             const tbody = document.querySelector('#notifTable tbody');
             tbody.innerHTML = '';
@@ -147,20 +192,33 @@
         }
 
         async function handleNotif(id) {
-            await fetch('/api/frontdesk/handle', {
+            const pass = PASSWORD();
+            await fetch(`${BASE}/notifications`, {
                 method: 'POST',
                 headers: {'Content-Type':'application/json'},
-                body: JSON.stringify({ id, password: document.getElementById('frontPass').value })
+                body: JSON.stringify({ id, password: pass })
             });
-            await loadNotifList(currentType);
-            // 刷新统计
-            const res = await fetch('/api/frontdesk?password=' + encodeURIComponent(document.getElementById('frontPass').value));
-            dashboardData = await res.json();
-            updateDashboard();
+            // 重新加载当前列表
+            const type = document.getElementById('listTitle').innerText.split(' ')[0];
+            const typeKey = Object.entries(getTypeMap()).find(([k,v]) => v === type)?.[0] || '';
+            if (typeKey) {
+                await loadNotifications(typeKey);
+                // 刷新总数据
+                const res = await fetch(BASE + '?password=' + encodeURIComponent(pass));
+                dashboardData = await res.json();
+                updateDashboard();
+            }
+        }
+
+        function getTypeMap() {
+            return { usage:'今日使用', urgent:'紧急通知', clean:'清扫任务', car:'用车服务', food:'订餐服务', extend:'续住需求' };
         }
 
         async function showHistory() {
-            const res = await fetch('/api/frontdesk/history?type=' + currentType + '&password=' + encodeURIComponent(document.getElementById('frontPass').value));
+            const pass = PASSWORD();
+            const typeText = document.getElementById('listTitle').innerText.split(' ')[0];
+            const typeKey = Object.entries(getTypeMap()).find(([k,v]) => v === typeText)?.[0] || '';
+            const res = await fetch(`${BASE}/notifications?password=${encodeURIComponent(pass)}&type=${typeKey}&history=1`);
             const data = await res.json();
             const tbody = document.querySelector('#notifTable tbody');
             tbody.innerHTML = '';
@@ -177,25 +235,33 @@
             }
         }
 
-        function speakNotif() {
+        function speakAll() {
             if (!dashboardData) return;
-            const types = { urgent:0, clean:0, car:0, food:0, extend:0 };
-            dashboardData.notifications.forEach(n => { if (types.hasOwnProperty(n.type)) types[n.type]++; });
-            const msg = `紧急通知${types.urgent}条，清扫${types.clean}条，用车${types.car}条，订餐${types.food}条，续住${types.extend}条。`;
-            if ('speechSynthesis' in window) {
-                const utter = new SpeechSynthesisUtterance(msg);
-                utter.lang = 'zh-CN';
-                speechSynthesis.speak(utter);
+            const counts = countByType(dashboardData.notifications || []);
+            counts.usage = dashboardData?.todayRooms?.length || 0;
+            const parts = [];
+            for (const [type, cnt] of Object.entries(counts)) {
+                if (cnt > 0) parts.push(getTypeName(type) + cnt + '条');
             }
+            speak(parts.length ? '当前状态：' + parts.join('，') : '暂无新通知');
         }
 
         function startAutoRefresh() {
             setInterval(async () => {
                 if (document.getElementById('dashboardPanel').classList.contains('hidden')) return;
-                const res = await fetch('/api/frontdesk?password=' + encodeURIComponent(document.getElementById('frontPass').value));
+                const pass = PASSWORD();
+                const res = await fetch(BASE + '?password=' + encodeURIComponent(pass));
                 dashboardData = await res.json();
                 updateDashboard();
             }, 30000);
+        }
+
+        function startAlertCheck() {
+            // 额外每分钟检查一次通知变化，确保不遗漏
+            setInterval(() => {
+                if (document.getElementById('dashboardPanel').classList.contains('hidden')) return;
+                updateDashboard();
+            }, 60000);
         }
     </script>
 </body>
