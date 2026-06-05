@@ -6,22 +6,51 @@
     <title>山予海 · 前台端</title>
     <link rel="icon" type="image/png" href="/favicon.png">
     <style>
-        body { font-family: 'PingFang SC','Microsoft YaHei',sans-serif; background: #f0f4f8; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
-        .container { max-width: 500px; width: 100%; }
-        .login-box { background: white; border-radius: 20px; padding: 30px; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
-        .dashboard { background: white; border-radius: 20px; padding: 30px; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
+        body { 
+            font-family: 'PingFang SC','Microsoft YaHei',sans-serif; 
+            background: #f0f4f8; 
+            display: flex; justify-content: center; align-items: center; 
+            min-height: 100vh; padding: 20px; 
+        }
+        .container { max-width: 800px; width: 100%; }
+        .login-box { 
+            background: white; border-radius: 20px; padding: 30px; 
+            text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.05); 
+        }
+        .dashboard { 
+            background: white; border-radius: 20px; padding: 30px; 
+            text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.05); 
+        }
         .logo { font-size: 60px; margin-bottom: 10px; }
-        h2 { color: #0b4f6c; margin-bottom: 25px; }
-        .card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-        .type-card { background: #f8fafc; border-radius: 15px; padding: 20px; cursor: pointer; transition: all 0.2s; }
+        h2 { color: #0b4f6c; margin-bottom: 30px; }
+        .card-row { 
+            display: flex; justify-content: space-between; 
+            gap: 10px; flex-wrap: wrap; margin-bottom: 30px;
+        }
+        .type-card { 
+            flex: 1 0 auto; min-width: 100px; 
+            background: #f8fafc; border-radius: 15px; 
+            padding: 15px 10px; cursor: pointer; 
+            transition: all 0.2s; text-align: center;
+        }
         .type-card:hover { background: #e8f4fd; }
+        .type-card .label { font-size: 14px; color: #555; margin-bottom: 8px; }
         .type-card .count { font-size: 32px; font-weight: 700; color: #0b4f6c; }
-        .type-card .label { font-size: 14px; color: #555; }
-        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 999; align-items: center; justify-content: center; }
-        .modal-content { background: white; border-radius: 20px; padding: 20px; width: 90%; max-width: 500px; max-height: 70vh; overflow-y: auto; }
+        .modal-overlay { 
+            display: none; position: fixed; top: 0; left: 0; 
+            width: 100%; height: 100%; background: rgba(0,0,0,0.5); 
+            z-index: 999; align-items: center; justify-content: center; 
+        }
+        .modal-content { 
+            background: white; border-radius: 20px; padding: 25px; 
+            width: 90%; max-width: 500px; max-height: 70vh; overflow-y: auto; 
+        }
         table { width: 100%; border-collapse: collapse; font-size: 14px; }
-        th, td { border-bottom: 1px solid #eee; padding: 8px; text-align: left; }
-        button { padding: 10px 20px; background: #1e90ff; color: white; border: none; border-radius: 25px; cursor: pointer; font-weight: 600; }
+        th, td { border-bottom: 1px solid #eee; padding: 10px 6px; text-align: left; }
+        button { 
+            padding: 10px 20px; background: #1e90ff; color: white; 
+            border: none; border-radius: 25px; cursor: pointer; font-weight: 600; 
+        }
         button.success { background: #27ae60; }
         button.danger { background: #e74c3c; }
         .hidden { display: none; }
@@ -42,37 +71,42 @@
         <div id="dashboardPanel" class="dashboard hidden">
             <div class="logo">🌊</div>
             <h2>山予海AI管家前台端</h2>
-            <div class="card-grid">
-                <div class="type-card" onclick="openList('usage')">
-                    <div class="count" id="cnt_usage">-</div>
+            <div class="card-row">
+                <!-- 今日AI管家使用 -->
+                <div class="type-card" onclick="openUsageList()">
                     <div class="label">今日AI管家使用</div>
+                    <div class="count" id="cnt_usage">0</div>
                 </div>
-                <div class="type-card" onclick="openList('urgent')">
-                    <div class="count" id="cnt_urgent">-</div>
+                <!-- 紧急通知 -->
+                <div class="type-card" onclick="openNotifyList('urgent')">
                     <div class="label">紧急通知</div>
+                    <div class="count" id="cnt_urgent">0</div>
                 </div>
-                <div class="type-card" onclick="openList('clean')">
-                    <div class="count" id="cnt_clean">-</div>
+                <!-- 清扫任务 -->
+                <div class="type-card" onclick="openNotifyList('clean')">
                     <div class="label">清扫任务</div>
+                    <div class="count" id="cnt_clean">0</div>
                 </div>
-                <div class="type-card" onclick="openList('car')">
-                    <div class="count" id="cnt_car">-</div>
+                <!-- 用车服务 -->
+                <div class="type-card" onclick="openNotifyList('car')">
                     <div class="label">用车服务</div>
+                    <div class="count" id="cnt_car">0</div>
                 </div>
-                <div class="type-card" onclick="openList('food')">
-                    <div class="count" id="cnt_food">-</div>
+                <!-- 订餐服务 -->
+                <div class="type-card" onclick="openNotifyList('food')">
                     <div class="label">订餐服务</div>
+                    <div class="count" id="cnt_food">0</div>
                 </div>
-                <div class="type-card" onclick="openList('extend')">
-                    <div class="count" id="cnt_extend">-</div>
+                <!-- 续住需求 -->
+                <div class="type-card" onclick="openNotifyList('extend')">
                     <div class="label">续住需求</div>
+                    <div class="count" id="cnt_extend">0</div>
                 </div>
             </div>
-            <button onclick="speakAll()" style="margin-top:20px;">🔊 播报当前状态</button>
         </div>
     </div>
 
-    <!-- 列表弹窗 -->
+    <!-- 列表弹窗（共用） -->
     <div id="listModal" class="modal-overlay">
         <div class="modal-content">
             <h4 id="listTitle"></h4>
@@ -116,7 +150,7 @@
         }
 
         function countByType(notifications) {
-            const counts = { usage:0, urgent:0, clean:0, car:0, food:0, extend:0 };
+            const counts = { urgent:0, clean:0, car:0, food:0, extend:0 };
             if (notifications) {
                 notifications.forEach(n => {
                     if (counts.hasOwnProperty(n.type)) counts[n.type]++;
@@ -130,22 +164,23 @@
             const current = countByType(notifications);
             current.usage = dashboardData?.todayRooms?.length || 0;
 
-            const ids = ['usage','urgent','clean','car','food','extend'];
-            ids.forEach(id => {
-                document.getElementById('cnt_' + id).innerText = current[id];
-            });
+            document.getElementById('cnt_usage').innerText = current.usage;
+            document.getElementById('cnt_urgent').innerText = current.urgent;
+            document.getElementById('cnt_clean').innerText = current.clean;
+            document.getElementById('cnt_car').innerText = current.car;
+            document.getElementById('cnt_food').innerText = current.food;
+            document.getElementById('cnt_extend').innerText = current.extend;
 
             // 检查变化并播报
             if (!skipVoice) {
                 const changes = [];
-                ids.forEach(id => {
-                    if (current[id] > previousCounts[id]) {
-                        changes.push(getTypeName(id) + ' ' + current[id] + ' 条');
+                for (const type of ['urgent','clean','car','food','extend']) {
+                    if (current[type] > previousCounts[type]) {
+                        changes.push(getTypeName(type) + ' ' + current[type] + ' 条');
                     }
-                });
+                }
                 if (changes.length > 0) {
                     speak('收到新通知：' + changes.join('，'));
-                    // 每十分钟重复提醒
                     if (alertInterval) clearInterval(alertInterval);
                     alertInterval = setInterval(() => {
                         if (document.getElementById('dashboardPanel').classList.contains('hidden')) {
@@ -153,9 +188,11 @@
                             return;
                         }
                         const nums = [];
-                        ids.forEach(id => { if (current[id] > 0) nums.push(getTypeName(id) + current[id] + '条'); });
+                        for (const type of ['urgent','clean','car','food','extend']) {
+                            if (current[type] > 0) nums.push(getTypeName(type) + current[type] + '条');
+                        }
                         if (nums.length > 0) speak('待处理提醒：' + nums.join('，'));
-                    }, 600000); // 10分钟
+                    }, 600000);
                 }
             }
             previousCounts = { ...current };
@@ -166,10 +203,29 @@
             return map[type] || '';
         }
 
-        async function openList(type) {
-            document.getElementById('listTitle').innerText = getTypeName(type) + ' 待处理列表';
+        // 打开今日使用房间列表
+        async function openUsageList() {
+            const rooms = dashboardData?.todayRooms || [];
+            document.getElementById('listTitle').innerText = '今日使用房间';
+            document.getElementById('historyBtn').style.display = 'none';
+            const tbody = document.querySelector('#notifTable tbody');
+            tbody.innerHTML = '';
+            if (rooms.length > 0) {
+                rooms.forEach(room => {
+                    tbody.innerHTML += `<tr><td>${room}</td></tr>`;
+                });
+            } else {
+                tbody.innerHTML = '<tr><td>暂无房间使用</td></tr>';
+            }
             document.getElementById('listModal').style.display = 'flex';
+        }
+
+        // 打开通知类型列表
+        async function openNotifyList(type) {
+            document.getElementById('listTitle').innerText = getTypeName(type) + ' 待处理列表';
+            document.getElementById('historyBtn').style.display = 'inline-block';
             await loadNotifications(type);
+            document.getElementById('listModal').style.display = 'flex';
         }
 
         async function loadNotifications(type) {
@@ -198,9 +254,10 @@
                 headers: {'Content-Type':'application/json'},
                 body: JSON.stringify({ id, password: pass })
             });
-            // 重新加载当前列表
-            const type = document.getElementById('listTitle').innerText.split(' ')[0];
-            const typeKey = Object.entries(getTypeMap()).find(([k,v]) => v === type)?.[0] || '';
+            // 重新加载当前类型的列表
+            const title = document.getElementById('listTitle').innerText;
+            const typeMap = { '紧急通知':'urgent', '清扫任务':'clean', '用车服务':'car', '订餐服务':'food', '续住需求':'extend' };
+            const typeKey = Object.entries(typeMap).find(([k,v]) => title.includes(k))?.[1];
             if (typeKey) {
                 await loadNotifications(typeKey);
                 // 刷新总数据
@@ -210,14 +267,12 @@
             }
         }
 
-        function getTypeMap() {
-            return { usage:'今日使用', urgent:'紧急通知', clean:'清扫任务', car:'用车服务', food:'订餐服务', extend:'续住需求' };
-        }
-
         async function showHistory() {
             const pass = PASSWORD();
-            const typeText = document.getElementById('listTitle').innerText.split(' ')[0];
-            const typeKey = Object.entries(getTypeMap()).find(([k,v]) => v === typeText)?.[0] || '';
+            const title = document.getElementById('listTitle').innerText;
+            const typeMap = { '紧急通知':'urgent', '清扫任务':'clean', '用车服务':'car', '订餐服务':'food', '续住需求':'extend' };
+            const typeKey = Object.entries(typeMap).find(([k,v]) => title.includes(k))?.[1];
+            if (!typeKey) return;
             const res = await fetch(`${BASE}/notifications?password=${encodeURIComponent(pass)}&type=${typeKey}&history=1`);
             const data = await res.json();
             const tbody = document.querySelector('#notifTable tbody');
@@ -235,17 +290,6 @@
             }
         }
 
-        function speakAll() {
-            if (!dashboardData) return;
-            const counts = countByType(dashboardData.notifications || []);
-            counts.usage = dashboardData?.todayRooms?.length || 0;
-            const parts = [];
-            for (const [type, cnt] of Object.entries(counts)) {
-                if (cnt > 0) parts.push(getTypeName(type) + cnt + '条');
-            }
-            speak(parts.length ? '当前状态：' + parts.join('，') : '暂无新通知');
-        }
-
         function startAutoRefresh() {
             setInterval(async () => {
                 if (document.getElementById('dashboardPanel').classList.contains('hidden')) return;
@@ -257,7 +301,6 @@
         }
 
         function startAlertCheck() {
-            // 额外每分钟检查一次通知变化，确保不遗漏
             setInterval(() => {
                 if (document.getElementById('dashboardPanel').classList.contains('hidden')) return;
                 updateDashboard();
