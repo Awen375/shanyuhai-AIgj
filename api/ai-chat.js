@@ -75,17 +75,24 @@ async function getAISettings() {
     };
 }
 
+// 匹配关键词：优先返回 type !== 'other' 的条目
 async function matchKeywords(text) {
     const keywordsData = await redis.get('config:keywords');
     if (!keywordsData) return null;
     const list = typeof keywordsData === 'string' ? JSON.parse(keywordsData) : keywordsData;
     if (!Array.isArray(list)) return null;
+
+    let fallback = null;
     for (const item of list) {
         if (text.includes(item.keyword)) {
-            return item;
+            if (item.type !== 'other') {
+                return item; // 立即返回非 other 类型
+            } else {
+                fallback = item; // 记录 other 类型，作为备选
+            }
         }
     }
-    return null;
+    return fallback; // 如果没有非 other 类型，则返回 other 类型（或 null）
 }
 
 export default async function handler(req, res) {
@@ -113,14 +120,14 @@ export default async function handler(req, res) {
 3. 如果客人问题模糊，主动追问。
 4. 用第一人称，亲切自然，适当使用emoji。
 5. 如果遇到需要人工处理的问题，提示拨打前台电话 138xxxx1234。
-
+6. 如果客人问到关于日落日出的时间以及潮汐时间，按照真实的时间回复。
 【民宿完整信息】
 ${hotelInfo}
 
 【补充知识库】
 ${knowledgeText || '暂无'}`;
 
-        // 检查关键词匹配
+        // 匹配关键词（优先非 other 类型）
         const matched = await matchKeywords(question);
 
         // 处理关键词的预设回复（包括括号指令）
@@ -128,14 +135,12 @@ ${knowledgeText || '暂无'}`;
             let replyBody = matched.reply;
             let instruction = '';
 
-            // 提取中文括号内的指令（例如：我们已经收到您的报修（语气要急切））
             const bracketMatch = matched.reply.match(/（([^）]+)）/);
             if (bracketMatch) {
-                replyBody = matched.reply.replace(/（[^）]+）/, '').trim();  // 去掉括号及内容
-                instruction = bracketMatch[1];  // 括号内的指令
+                replyBody = matched.reply.replace(/（[^）]+）/, '').trim();
+                instruction = bracketMatch[1];
             }
 
-            // 将回复要点和指令分别告诉AI
             let extraPrompt = '';
             if (replyBody) {
                 extraPrompt += `\n\n【回复要点】请根据以下内容生成回复：${replyBody}`;
