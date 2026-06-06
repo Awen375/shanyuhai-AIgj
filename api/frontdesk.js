@@ -19,7 +19,6 @@ export default async function handler(req, res) {
         action = url.searchParams.get('action') || 'main';
     }
 
-    // ★ 心跳接口（无需密码验证）
     if (action === 'heartbeat') {
         await redis.set('heartbeat:frontdesk', '1', { ex: 60 });
         return res.status(200).json({ success: true });
@@ -31,7 +30,6 @@ export default async function handler(req, res) {
     }
 
     try {
-        // 主看板
         if (action === 'main' && req.method === 'GET') {
             const today = new Date().toISOString().slice(0, 10);
             const chatKeys = await redis.keys('chat:*');
@@ -57,7 +55,6 @@ export default async function handler(req, res) {
             return res.status(200).json({ valid: true, todayRooms: Array.from(rooms), notifications });
         }
 
-        // 通知列表（按类型）
         if (action === 'notifications' && req.method === 'GET') {
             const type = url.searchParams.get('type');
             const history = url.searchParams.get('history');
@@ -77,7 +74,6 @@ export default async function handler(req, res) {
             return res.status(200).json(history === '1' ? { history: items } : { notifications: items });
         }
 
-        // 处理通知
         if (action === 'notifications' && req.method === 'POST') {
             const { id } = req.body || {};
             if (!id) return res.status(400).json({ error: '缺少通知ID' });
@@ -90,7 +86,6 @@ export default async function handler(req, res) {
             return res.status(200).json({ success: true });
         }
 
-        // 接管房间列表
         if (action === 'takeover_rooms' && req.method === 'GET') {
             const keys = await redis.keys('takeover:*');
             const rooms = [];
@@ -108,7 +103,6 @@ export default async function handler(req, res) {
             return res.status(200).json({ rooms });
         }
 
-        // 聊天记录
         if (action === 'chat_messages' && req.method === 'GET') {
             const room = url.searchParams.get('room');
             if (!room) return res.status(400).json({ error: '缺少房间号' });
@@ -119,7 +113,9 @@ export default async function handler(req, res) {
                 if (data) {
                     try {
                         const msg = typeof data === 'string' ? JSON.parse(data) : data;
-                        if (msg.room === room && msg.reply) messages.push({ sender: 'ai', text: msg.reply, time: msg.time });
+                        if (msg.room === room && msg.reply) {
+                            messages.push({ sender: msg.sender || 'ai', text: msg.reply, time: msg.time });
+                        }
                     } catch (e) {}
                 }
             }
@@ -147,7 +143,6 @@ export default async function handler(req, res) {
             return res.status(200).json({ messages });
         }
 
-        // 发送消息
         if (action === 'send_msg' && req.method === 'POST') {
             const { room, text } = req.body || {};
             if (!room || !text) return res.status(400).json({ error: '缺少参数' });
@@ -156,21 +151,19 @@ export default async function handler(req, res) {
             for (const key of pendingKeys) await redis.del(key);
             return res.status(200).json({ success: true });
         }
-// 发送前台消息（同时写入公共聊天记录，使客人端可见）
-if (action === 'send_msg_public' && req.method === 'POST') {
-    const { room, text } = req.body || {};
-    if (!room || !text) return res.status(400).json({ error: '缺少参数' });
-    // 写入公共聊天记录（客人端会轮询 chat:* 读取）
-    const chatKey = `chat:${Date.now()}:${Math.random().toString(36).substr(2,6)}`;
-    await redis.set(chatKey, JSON.stringify({
-        room, question: '', reply: text,   // 作为AI回复存储，客人端会显示为AI消息
-        time: new Date().toISOString(),
-        sender: 'frontdesk'
-    }));
-    await redis.expire(chatKey, 60 * 60 * 24 * 90);
-    return res.status(200).json({ success: true });
-}
-        // 结束接管
+
+        // ★ 发送公开消息（客人端可见）
+        if (action === 'send_msg_public' && req.method === 'POST') {
+            const { room, text } = req.body || {};
+            if (!room || !text) return res.status(400).json({ error: '缺少参数' });
+            const chatKey = `chat:${Date.now()}:${Math.random().toString(36).substr(2,6)}`;
+            await redis.set(chatKey, JSON.stringify({
+                room, question: '', reply: text, sender: 'frontdesk', time: new Date().toISOString()
+            }));
+            await redis.expire(chatKey, 60 * 60 * 24 * 90);
+            return res.status(200).json({ success: true });
+        }
+
         if (action === 'end_takeover' && req.method === 'POST') {
             const { room } = req.body || {};
             await redis.del(`takeover:${room}`);
@@ -183,7 +176,6 @@ if (action === 'send_msg_public' && req.method === 'POST') {
             return res.status(200).json({ success: true });
         }
 
-        // 房间二维码
         if (action === 'rooms' && req.method === 'GET') {
             const keys = await redis.keys('room:*');
             const rooms = [];
@@ -197,7 +189,6 @@ if (action === 'send_msg_public' && req.method === 'POST') {
             return res.status(200).json({ rooms });
         }
 
-        // 刷新房间二维码
         if (action === 'refresh_room' && req.method === 'POST') {
             const { id } = req.body || {};
             if (!id) return res.status(400).json({ error: '缺少房间号' });
