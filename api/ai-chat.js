@@ -5,7 +5,7 @@ const redis = new Redis({
   token: process.env.KV_REST_API_TOKEN,
 });
 
-// ★★★ 你的民宿完整信息（非常重要！） ★★★
+// 民宿完整信息（保持原来的）
 const hotelInfo = `
 【民宿基本信息】
 - 民宿名称：霞浦县山予海民宿
@@ -60,7 +60,6 @@ Day3：早餐 → 下尾岛 → 县城逛逛 → 返程
 - 前台可借充电宝、雨伞
 `;
 
-
 async function getAISettings() {
     const settings = await redis.get('config:ai');
     if (!settings) {
@@ -110,20 +109,46 @@ export default async function handler(req, res) {
             }
         }
 
+        // 获取当前日期和时间，并转换为北京时间
         const now = new Date();
-        const todayStr = now.toLocaleDateString('zh-CN', { year:'numeric', month:'long', day:'numeric', weekday:'long' });
-        const timeStr = now.toLocaleTimeString('zh-CN', { hour12: false });
+        // 转为北京时间（东八区）
+        const beijingTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }));
+        const todayStr = beijingTime.toLocaleDateString('zh-CN', { 
+            year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' 
+        });
+        const timeStr = beijingTime.toLocaleTimeString('zh-CN', { hour12: false });
+        const hour = beijingTime.getHours(); // 0-23
+
+        // 根据当前时间推荐合适的活动（避免死板硬推荐）
+        let activityHint = '';
+        if (hour >= 5 && hour < 8) {
+            activityHint = '现在是清晨，如果客人询问推荐活动，可以推荐去看花竹的日出，或者晨间海滩散步。';
+        } else if (hour >= 8 && hour < 11) {
+            activityHint = '现在是上午，可以推荐小皓赶海（如果潮汐合适）、附近沙滩游玩，或者享用民宿早餐。';
+        } else if (hour >= 11 && hour < 14) {
+            activityHint = '现在是中午，可以推荐三沙镇吃海鲜大排档，或者回民宿休息。';
+        } else if (hour >= 14 && hour < 17) {
+            activityHint = '现在是下午，可以推荐高罗沙滩、大京沙滩，或者露台喝下午茶看海。';
+        } else if (hour >= 17 && hour < 19) {
+            activityHint = '现在是傍晚，强烈推荐去东壁村看日落，步行10分钟就能到。';
+        } else if (hour >= 19 && hour < 22) {
+            activityHint = '现在是晚上，可以推荐露台吹海风看星星，或者去三沙镇吃夜宵。';
+        } else {
+            activityHint = '现在是深夜，提醒客人早点休息，明天可以早起看日出。';
+        }
 
         let systemPrompt = `你是"${aiSettings.name}"，山予海民宿的专属AI管家，性格亲切活泼，像朋友一样和客人交流。
-现在是${todayStr} ${timeStr}。请回答客人关于日期、时间、潮汐等问题时参考这个时间。
+现在是北京时间 ${todayStr} ${timeStr}。${activityHint}
+当客人询问推荐活动或攻略时，请结合当前时间给出自然贴切的建议，不要在不合适的时间推荐（比如凌晨推荐看日落）。
 
 【核心规则】
 1. 你只能回答与山予海民宿及相关旅游的问题。遇到完全无关的问题，请礼貌拒绝。
 2. 理解客人的同义表达。
 3. 如果客人问题模糊，主动追问。
 4. 用第一人称，亲切自然，适当使用emoji。
-5. 如果遇到需要人工处理的问题，提示拨打前台电话 138xxxx1234。
+5. 如果遇到需要人工处理的问题，提示拨打前台电话 0593-8850999。
 6. 如果客人问到关于日落日出的时间以及潮汐时间，按照真实的时间回复。
+
 【民宿完整信息】
 ${hotelInfo}
 
@@ -144,7 +169,7 @@ ${knowledgeText || '暂无'}`;
             if (instruction) systemPrompt += `\n【回复指示】请严格遵循以下要求来调整回复的语气、风格或内容：${instruction}`;
         }
 
-        // 使用火山方舟 V3
+        // 使用火山方舟 V3.2，接入点为 ep-m-20260521173515-xfdzp
         const response = await fetch('https://ark.cn-beijing.volces.com/api/v3/chat/completions', {
             method: 'POST',
             headers: {
@@ -152,7 +177,7 @@ ${knowledgeText || '暂无'}`;
                 'Authorization': `Bearer ${process.env.VOLCENGINE_API_KEY}`
             },
             body: JSON.stringify({
-                model: 'ep-20260606133152-72n4l',   // 火山方舟的 V3 模型名
+                model: 'ep-m-20260521173515-xfdzp',   // 你的 V3.2 接入点
                 messages: [
                     { role: 'system', content: systemPrompt },
                     { role: 'user', content: question }
@@ -169,7 +194,11 @@ ${knowledgeText || '暂无'}`;
         let reply = content;
 
         // 记录未回答问题
-        if (reply.includes('不太确定') || reply.includes('无法回答') || reply.includes('这个我不太清楚')) {
+        const unsurePhrases = [
+            '不太确定', '无法回答', '这个我不太清楚', '抱歉，我暂时无法',
+            '建议您拨打前台', '您可以咨询前台', '暂时无法提供', '我也不太了解', '抱歉'
+        ];
+        if (unsurePhrases.some(phrase => reply.includes(phrase))) {
             await redis.set(`unanswered:${Date.now()}`, JSON.stringify({
                 question, room: room || '', time: new Date().toISOString(), status: 'pending'
             }));
