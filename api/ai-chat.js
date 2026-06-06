@@ -87,6 +87,7 @@ async function matchKeywords(text) {
     let matchedOther = null;
     for (const item of list) {
         if (text.includes(item.keyword)) {
+            // ★ 确保 room_msg 类型被优先返回
             if (item.type === 'room_msg') return item;
             if (item.type === 'other') {
                 matchedOther = item;
@@ -98,7 +99,6 @@ async function matchKeywords(text) {
     return matchedOther;
 }
 
-// 检查前台是否在线（心跳键是否存在）
 async function isFrontdeskOnline() {
     const heartbeat = await redis.get('heartbeat:frontdesk');
     return !!heartbeat;
@@ -177,14 +177,15 @@ ${knowledgeText || '暂无'}`;
 
         // 关键词匹配
         const matched = await matchKeywords(question);
+        console.log('关键词匹配结果:', JSON.stringify(matched));
 
         // ★ 处理“房客消息”类型（新增在线状态检测）
         if (matched && matched.type === 'room_msg') {
             const online = await isFrontdeskOnline();
+            console.log('前台在线状态:', online);
             // 下班时间 (23:00 - 8:00) 且前台不在线
             if (hour >= 23 || hour < 8) {
                 if (online) {
-                    // 尽管下班，但前台在线，允许接管
                     await redis.set(`notification:${Date.now()}`, JSON.stringify({
                         room: room || '未知', question, reply: '', keyword: matched.keyword,
                         type: 'room_msg', time: new Date().toISOString(), status: 'pending'
@@ -192,6 +193,7 @@ ${knowledgeText || '暂无'}`;
                     await redis.set(`takeover:${room}`, JSON.stringify({
                         active: true, startTime: Date.now(), lastGuestMsg: Date.now()
                     }));
+                    console.log(`接管房间已设置: takeover:${room}`);
                     return res.status(200).json({ reply: '正在通知前台的小伙伴，接通中请稍等...' });
                 } else {
                     return res.status(200).json({ reply: '我们前台的小伙伴们都下班啦！目前是下班时间，有什么问题您可以先问我我可以帮您处理的。上班时间：8:00-23:00' });
@@ -206,6 +208,7 @@ ${knowledgeText || '暂无'}`;
                     await redis.set(`takeover:${room}`, JSON.stringify({
                         active: true, startTime: Date.now(), lastGuestMsg: Date.now()
                     }));
+                    console.log(`接管房间已设置: takeover:${room}`);
                     return res.status(200).json({ reply: '正在通知前台的小伙伴，接通中请稍等...' });
                 } else {
                     return res.status(200).json({ reply: '目前前台小伙伴不在线，您可以先留言，我们稍后回复您。' });
