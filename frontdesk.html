@@ -206,22 +206,19 @@
         else if (cur.room_msg === 0) stopAlert();
     }
 
-    // 清除所有房客消息通知（标记为已处理）
     async function clearRoomMsgNotifications() {
         if (!dashboardData?.notifications) return;
         const ids = dashboardData.notifications.filter(n => n.type === 'room_msg').map(n => n.id);
         for (const id of ids) {
             await fetch(`${BASE}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ password: PASSWORD(), action: 'notifications', id }) });
         }
-        // 从本地数据中移除这些通知
         dashboardData.notifications = dashboardData.notifications.filter(n => n.type !== 'room_msg');
         updateDashboard();
         stopAlert();
     }
 
-    // 点击“房客消息”卡片
     async function openRoomMsgList() {
-        await clearRoomMsgNotifications();          // 清除所有房客消息提醒
+        await clearRoomMsgNotifications();
         await loadTakeoverRooms(true);
         document.getElementById('chatModal').classList.remove('hidden');
         if (takeoverRooms.length === 0) {
@@ -315,7 +312,6 @@
         }
     }
 
-    // 普通通知功能
     async function openNotifyList(type) {
         document.getElementById('listTitle').innerText = getTypeName(type) + ' 待处理列表';
         document.getElementById('historyBtn').style.display = 'inline-block';
@@ -367,44 +363,27 @@
     }
     function getTypeName(t) { const m = { usage:'今日使用', room_msg:'房客消息', clean:'清扫任务', car:'用车服务', food:'订餐服务', extend:'续住需求' }; return m[t]||''; }
 
-    // ========== 二维码（不依赖logo，失败仍生成） ==========
+    // ========== 二维码（纯净版，无logo） ==========
     async function showAllRoomsQR() {
         const res = await fetch(`${BASE}?password=${encodeURIComponent(PASSWORD())}&action=rooms`);
         const data = await res.json();
         if (!data.rooms) return alert('获取房间列表失败');
         const container = document.getElementById('qrContainer');
         container.innerHTML = '';
-        // 直接生成所有二维码（不等待logo）
-        data.rooms.forEach(room => generateQR(room, null));
+        data.rooms.forEach(room => generateQR(room));
         document.getElementById('qrModal').style.display = 'flex';
-
-        // 后台静默加载logo，成功后再刷新所有二维码
-        const logo = new Image();
-        logo.src = '/logo.jpg';
-        logo.onload = () => {
-            // 重新生成带logo的二维码
-            data.rooms.forEach(room => generateQR(room, logo));
-        };
     }
 
-    function generateQR(room, logo) {
+    function generateQR(room) {
         const url = `${location.origin}/room-chat.html?room=${room.id}&token=${room.token}`;
+        // 如果已存在相同房间的二维码，先移除
         const existing = document.querySelector(`.qr-room-item[data-room="${room.id}"]`);
-        if (existing) existing.remove();  // 更新时先移除旧二维码
+        if (existing) existing.remove();
 
         const canvas = document.createElement('canvas');
         canvas.width = 300; canvas.height = 300;
         QRCode.toCanvas(canvas, url, { width: 300, margin: 1, errorCorrectionLevel: 'H' }, (error) => {
             if (error) return;
-            const ctx = canvas.getContext('2d');
-            if (logo && logo.complete && logo.naturalWidth > 0) {
-                const size = 70, x = (canvas.width - size) / 2, y = (canvas.height - size) / 2;
-                ctx.fillStyle = '#fff';
-                ctx.beginPath();
-                ctx.arc(canvas.width/2, canvas.height/2, size/2+4, 0, 2*Math.PI);
-                ctx.fill();
-                ctx.drawImage(logo, x, y, size, size);
-            }
             const div = document.createElement('div');
             div.className = 'qr-room-item';
             div.setAttribute('data-room', room.id);
