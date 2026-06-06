@@ -156,7 +156,20 @@ export default async function handler(req, res) {
             for (const key of pendingKeys) await redis.del(key);
             return res.status(200).json({ success: true });
         }
-
+// 发送前台消息（同时写入公共聊天记录，使客人端可见）
+if (action === 'send_msg_public' && req.method === 'POST') {
+    const { room, text } = req.body || {};
+    if (!room || !text) return res.status(400).json({ error: '缺少参数' });
+    // 写入公共聊天记录（客人端会轮询 chat:* 读取）
+    const chatKey = `chat:${Date.now()}:${Math.random().toString(36).substr(2,6)}`;
+    await redis.set(chatKey, JSON.stringify({
+        room, question: '', reply: text,   // 作为AI回复存储，客人端会显示为AI消息
+        time: new Date().toISOString(),
+        sender: 'frontdesk'
+    }));
+    await redis.expire(chatKey, 60 * 60 * 24 * 90);
+    return res.status(200).json({ success: true });
+}
         // 结束接管
         if (action === 'end_takeover' && req.method === 'POST') {
             const { room } = req.body || {};
