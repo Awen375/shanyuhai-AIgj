@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>山予海 · 前台端</title>
     <link rel="icon" type="image/png" href="/favicon.png">
-    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
     <style>
         body { font-family: 'PingFang SC','Microsoft YaHei',sans-serif; background: #f0f4f8; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
         .container { max-width: 800px; width: 100%; }
@@ -83,12 +82,13 @@
 <div id="chatModal" class="chat-modal hidden"><div class="room-list" id="roomListContainer"></div><div class="chat-area"><div class="chat-header"><span id="currentRoomTitle"></span><button onclick="endTakeover()" class="danger">结束对话</button></div><div class="messages" id="chatMessages"></div><div class="input-area"><input type="text" id="chatInput" placeholder="输入回复..."><button onclick="sendMsg()">发送</button></div></div></div>
 <div id="qrModal" class="modal-overlay"><div class="modal-content" style="max-width:900px;width:95%;"><h3>所有房间二维码</h3><div id="qrContainer" style="display:flex;flex-wrap:wrap;justify-content:center;"></div><button onclick="document.getElementById('qrModal').style.display='none'">关闭</button></div></div>
 
+<script src="/qrcode.min.js"></script>
 <script>
     let dashboardData = null, currentRoom = null, takeoverRooms = [], alertTimer = null, chatActive = false;
     const PASSWORD = () => localStorage.getItem('front_password') || '';
     const BASE = '/api/frontdesk';
 
-    // 初始化隐藏
+    // 初始化隐藏所有面板
     document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('chatModal').classList.add('hidden');
         document.getElementById('dashboardPanel').classList.add('hidden');
@@ -116,7 +116,7 @@
         const pass = document.getElementById('frontPass').value;
         const res = await fetch(BASE + '?password=' + encodeURIComponent(pass));
         if (!res.ok) {
-            document.getElementById('loginMsg').innerText = '服务器错误，请稍后重试';
+            document.getElementById('loginMsg').innerText = '服务器错误或密码错误';
             return;
         }
         const data = await res.json();
@@ -162,7 +162,6 @@
         else openNotifyList('room_msg');
     }
 
-    // 接管房间相关
     async function loadTakeoverRooms() {
         if (!PASSWORD()) return;
         const res = await fetch(`${BASE}/chat?password=${encodeURIComponent(PASSWORD())}&action=rooms`);
@@ -217,7 +216,6 @@
         loadTakeoverRooms();
     }
 
-    // 普通通知
     async function openNotifyList(type) {
         document.getElementById('listTitle').innerText = getTypeName(type) + ' 待处理列表';
         document.getElementById('historyBtn').style.display = 'inline-block';
@@ -256,7 +254,7 @@
         else tbody.innerHTML = '<tr><td colspan="3">暂无记录</td></tr>';
     }
 
-    function openTodayStats() { alert('今日处理统计功能'); }
+    function openTodayStats() { alert('今日处理统计'); }
     function openUsageList() {
         const rooms = dashboardData?.todayRooms || [];
         document.getElementById('listTitle').innerText = '今日使用房间';
@@ -267,13 +265,9 @@
         else tbody.innerHTML = '<tr><td>暂无</td></tr>';
         document.getElementById('listModal').style.display = 'flex';
     }
+    function getTypeName(t) { const m = { usage:'今日使用', room_msg:'房客消息', clean:'清扫任务', car:'用车服务', food:'订餐服务', extend:'续住需求' }; return m[t]||''; }
 
-    function getTypeName(t) {
-        const m = { usage:'今日使用', room_msg:'房客消息', clean:'清扫任务', car:'用车服务', food:'订餐服务', extend:'续住需求' };
-        return m[t] || '';
-    }
-
-    // 二维码功能
+    // 二维码功能（使用本地 qrcode.min.js）
     async function showAllRoomsQR() {
         const res = await fetch(`${BASE}/rooms?password=${encodeURIComponent(PASSWORD())}`);
         const data = await res.json();
@@ -287,7 +281,7 @@
                 const canvas = document.createElement('canvas'); canvas.width = 300; canvas.height = 300;
                 QRCode.toCanvas(canvas, url, { width: 300, margin: 1, errorCorrectionLevel: 'H' }, () => {
                     const ctx = canvas.getContext('2d');
-                    const s = 70; const x = (300-s)/2, y = (300-s)/2;
+                    const s = 70, x = (300-s)/2, y = (300-s)/2;
                     ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(150,150,s/2+4,0,2*Math.PI); ctx.fill();
                     ctx.drawImage(logo, x, y, s, s);
                 });
