@@ -22,13 +22,27 @@
         .chat-input button { margin-left: 10px; padding: 12px 24px; background: #1e90ff; color: white; border: none; border-radius: 25px; cursor: pointer; font-weight: 600; }
         .chat-input button:disabled { background: #ccc; cursor: not-allowed; }
         .notice { text-align: center; color: #888; font-size: 14px; margin-top: 5px; }
+        /* 欢迎页 */
+        .welcome-screen { display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100%; text-align: center; padding: 20px; }
+        .welcome-screen h1 { color: #0b4f6c; font-size: 32px; margin-bottom: 20px; }
+        .welcome-screen p { color: #666; margin-bottom: 30px; line-height: 1.6; }
+        .welcome-screen button { padding: 15px 40px; background: #1e90ff; color: white; border: none; border-radius: 30px; font-size: 18px; cursor: pointer; }
+        /* 全屏提示 */
         .fullscreen-msg { display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100%; text-align: center; padding: 20px; }
         .fullscreen-msg h3 { color: #0b4f6c; }
     </style>
 </head>
 <body>
 <div class="chat-container" id="chatContainer">
-    <div id="loadingMsg" style="display:flex; justify-content:center; align-items:center; height:100%;">验证中...</div>
+    <!-- 欢迎页（默认显示） -->
+    <div id="welcomeScreen" class="welcome-screen">
+        <h1>🏖️ 山予海民宿</h1>
+        <p>180度海景，躺在床上就能看大海<br>您的专属AI管家小予已就位</p>
+        <button onclick="startJourney()">✨ 开始智能之旅</button>
+    </div>
+
+    <!-- 其他提示页（隐藏） -->
+    <div id="loadingMsg" class="fullscreen-msg" style="display:none;"><h3>验证中...</h3></div>
     <div id="waitingMsg" class="fullscreen-msg" style="display:none;">
         <h3>🕒 等待分配</h3>
         <p id="waitingText"></p>
@@ -41,6 +55,8 @@
         <h3>⛔ 管家已停用</h3>
         <p id="disabledText">您的专属AI管家已被停用，请联系前台获取新的二维码！</p>
     </div>
+
+    <!-- 聊天界面（隐藏） -->
     <div id="chatInterface" style="display:none; flex-direction: column; height: 100%;">
         <div class="chat-header">
             <h2>🌊 山予海 AI 管家</h2>
@@ -64,16 +80,21 @@
     const groupId = urlParams.get('groupId') || '';
 
     if (!currentRoom || !token) {
-        document.getElementById('loadingMsg').innerHTML = '<h3>参数错误</h3>';
-    } else {
-        verifyRoom();
+        document.getElementById('welcomeScreen').innerHTML = '<h3>参数错误</h3>';
     }
 
     let lastMessageTime = null;
     let pollingTimer = null;
     let isSending = false;
-    const messageKeys = new Set();                // 去重 key: time_sender_text
-    const recentSentTexts = new Map();           // 记录近期发送的文本和时间
+    const messageKeys = new Set();
+    const recentSentTexts = new Map();
+
+    // 点击“开始智能之旅”后，验证房间并进入聊天
+    function startJourney() {
+        document.getElementById('welcomeScreen').style.display = 'none';
+        document.getElementById('loadingMsg').style.display = 'flex';
+        verifyRoom();
+    }
 
     async function verifyRoom() {
         try {
@@ -81,6 +102,7 @@
             if (checkin && checkout) url += `&checkin=${checkin}&checkout=${checkout}`;
             if (groupId) url += `&groupId=${encodeURIComponent(groupId)}`;
             const res = await fetch(url);
+            if (!res.ok) throw new Error('服务器错误');
             const data = await res.json();
             if (data.valid) {
                 document.getElementById('loadingMsg').style.display = 'none';
@@ -145,6 +167,7 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ question: text, room: currentRoom, groupId })
             });
+            if (!res.ok) throw new Error('AI 服务异常');
             const data = await res.json();
             if (data.reply) {
                 appendMessage('ai', data.reply, new Date().toISOString());
@@ -182,8 +205,8 @@
         try {
             let url = `/api/frontdesk?password=guest&action=chat_messages&room=${encodeURIComponent(currentRoom)}`;
             if (groupId) url += `&groupId=${encodeURIComponent(groupId)}`;
-
             const res = await fetch(url);
+            if (!res.ok) throw new Error('加载失败');
             const data = await res.json();
             const chatBox = document.getElementById('chatMessages');
             chatBox.innerHTML = '';
@@ -211,6 +234,7 @@
             url += `&since=${encodeURIComponent(lastMessageTime)}`;
 
             const res = await fetch(url);
+            if (!res.ok) return;
             const data = await res.json();
             if (data.messages && data.messages.length > 0) {
                 const now = Date.now();
