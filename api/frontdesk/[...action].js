@@ -11,7 +11,7 @@ async function checkPassword(password) {
 }
 
 export default async function handler(req, res) {
-    // 解析 action，确保能匹配 /api/frontdesk?password=...
+    // 正确解析 action，兼容 /api/frontdesk?password=...
     const url = new URL(req.url, `http://${req.headers.host}`);
     let action = url.pathname.replace('/api/frontdesk', '').replace(/^\//, '');
     if (!action) action = 'main';   // 空路径默认 main
@@ -23,7 +23,7 @@ export default async function handler(req, res) {
     }
 
     try {
-        // 主看板
+        // ===== 主看板 =====
         if (action === 'main' && req.method === 'GET') {
             const today = new Date().toISOString().slice(0, 10);
             const chatKeys = await redis.keys('chat:*');
@@ -49,7 +49,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ valid: true, todayRooms: Array.from(rooms), notifications });
         }
 
-        // 通知列表（按类型）
+        // ===== 通知列表（按类型） =====
         if (action === 'notifications' && req.method === 'GET') {
             const type = url.searchParams.get('type');
             const history = url.searchParams.get('history');
@@ -82,60 +82,60 @@ export default async function handler(req, res) {
             return res.status(200).json({ success: true });
         }
 
-        // 接管房间列表
-        if (action === 'chat' && req.method === 'GET' && url.searchParams.get('action') === 'rooms') {
-            const keys = await redis.keys('takeover:*');
-            const rooms = [];
-            for (const key of keys) {
-                const data = await redis.get(key);
-                if (data) {
-                    const takeover = typeof data === 'string' ? JSON.parse(data) : data;
-                    if (takeover.active) {
-                        const r = key.replace('takeover:', '');
-                        const msgKeys = await redis.keys(`pending_msg:${r}:*`);
-                        rooms.push({ room: r, unread: msgKeys.length, startTime: takeover.startTime });
+        // ===== 接管房间 =====
+        if (action === 'chat' && req.method === 'GET') {
+            const subAction = url.searchParams.get('action');
+            const room = url.searchParams.get('room');
+            if (subAction === 'rooms') {
+                const keys = await redis.keys('takeover:*');
+                const rooms = [];
+                for (const key of keys) {
+                    const data = await redis.get(key);
+                    if (data) {
+                        const takeover = typeof data === 'string' ? JSON.parse(data) : data;
+                        if (takeover.active) {
+                            const r = key.replace('takeover:', '');
+                            const msgKeys = await redis.keys(`pending_msg:${r}:*`);
+                            rooms.push({ room: r, unread: msgKeys.length, startTime: takeover.startTime });
+                        }
                     }
                 }
-            }
-            return res.status(200).json({ rooms });
-        }
-
-        // 房间聊天记录
-        if (action === 'chat' && req.method === 'GET' && url.searchParams.get('room')) {
-            const room = url.searchParams.get('room');
-            const chatKeys = await redis.keys('chat:*');
-            const messages = [];
-            for (const key of chatKeys) {
-                const data = await redis.get(key);
-                if (data) {
-                    try {
-                        const msg = typeof data === 'string' ? JSON.parse(data) : data;
-                        if (msg.room === room && msg.reply) messages.push({ sender: 'ai', text: msg.reply, time: msg.time });
-                    } catch (e) {}
+                return res.status(200).json({ rooms });
+            } else if (room) {
+                const chatKeys = await redis.keys(`chat:*`);
+                const messages = [];
+                for (const key of chatKeys) {
+                    const data = await redis.get(key);
+                    if (data) {
+                        try {
+                            const msg = typeof data === 'string' ? JSON.parse(data) : data;
+                            if (msg.room === room && msg.reply) messages.push({ sender: 'ai', text: msg.reply, time: msg.time });
+                        } catch (e) {}
+                    }
                 }
-            }
-            const frontKeys = await redis.keys(`front_msg:${room}:*`);
-            for (const key of frontKeys) {
-                const data = await redis.get(key);
-                if (data) {
-                    try {
-                        const msg = typeof data === 'string' ? JSON.parse(data) : data;
-                        messages.push({ sender: msg.sender, text: msg.text, time: msg.time });
-                    } catch (e) {}
+                const frontKeys = await redis.keys(`front_msg:${room}:*`);
+                for (const key of frontKeys) {
+                    const data = await redis.get(key);
+                    if (data) {
+                        try {
+                            const msg = typeof data === 'string' ? JSON.parse(data) : data;
+                            messages.push({ sender: msg.sender, text: msg.text, time: msg.time });
+                        } catch (e) {}
+                    }
                 }
-            }
-            const pendingKeys = await redis.keys(`pending_msg:${room}:*`);
-            for (const key of pendingKeys) {
-                const data = await redis.get(key);
-                if (data) {
-                    try {
-                        const msg = typeof data === 'string' ? JSON.parse(data) : data;
-                        messages.push({ sender: 'guest', text: msg.text, time: msg.time });
-                    } catch (e) {}
+                const pendingKeys = await redis.keys(`pending_msg:${room}:*`);
+                for (const key of pendingKeys) {
+                    const data = await redis.get(key);
+                    if (data) {
+                        try {
+                            const msg = typeof data === 'string' ? JSON.parse(data) : data;
+                            messages.push({ sender: 'guest', text: msg.text, time: msg.time });
+                        } catch (e) {}
+                    }
                 }
+                messages.sort((a, b) => new Date(a.time) - new Date(b.time));
+                return res.status(200).json({ messages });
             }
-            messages.sort((a, b) => new Date(a.time) - new Date(b.time));
-            return res.status(200).json({ messages });
         }
 
         // 发送消息
