@@ -246,12 +246,15 @@
     }
 
     async function sendMsg() {
-        const text = document.getElementById('chatInput').value.trim();
-        if (!text || !currentRoom) { alert('请选择左侧已触发的客房'); return; }
-        await fetch(`${BASE}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ password: PASSWORD(), action: 'send_msg', room: currentRoom, text }) });
-        document.getElementById('chatInput').value = '';
-        loadRoomMessages(currentRoom);
-    }
+    const text = document.getElementById('chatInput').value.trim();
+    if (!text || !currentRoom) { alert('请选择左侧已触发的客房'); return; }
+    // 发送前台消息（写入 front_msg:*）
+    await fetch(`${BASE}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ password: PASSWORD(), action: 'send_msg', room: currentRoom, text }) });
+    // ★ 同时写入公共聊天记录，使客人端可见
+    await fetch(`${BASE}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ password: PASSWORD(), action: 'send_msg_public', room: currentRoom, text }) });
+    document.getElementById('chatInput').value = '';
+    loadRoomMessages(currentRoom);
+}
 
     function closeChatModal() { document.getElementById('chatModal').classList.add('hidden'); }
 
