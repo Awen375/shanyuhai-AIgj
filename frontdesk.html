@@ -1,211 +1,323 @@
-import { Redis } from '@upstash/redis';
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>山予海 · 前台端</title>
+    <link rel="icon" type="image/png" href="/favicon.png">
+    <!-- 使用 CDN 加载二维码库 -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
+    <style>
+        body { font-family: 'PingFang SC','Microsoft YaHei',sans-serif; background: #f0f4f8; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
+        .container { max-width: 800px; width: 100%; }
+        .login-box { background: white; border-radius: 20px; padding: 30px; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
+        .dashboard { background: white; border-radius: 20px; padding: 30px; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.05); position: relative; }
+        .logo { font-size: 60px; margin-bottom: 10px; }
+        h2 { color: #0b4f6c; margin-bottom: 30px; display: inline-block; }
+        .card-row { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 30px; }
+        .type-card { flex: 1 0 auto; min-width: 100px; background: #f8fafc; border-radius: 15px; padding: 15px 10px; cursor: pointer; transition: all 0.2s; text-align: center; }
+        .type-card:hover { background: #e8f4fd; }
+        .type-card .label { font-size: 14px; color: #555; margin-bottom: 8px; }
+        .type-card .count { font-size: 32px; font-weight: 700; color: #0b4f6c; }
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 999; align-items: center; justify-content: center; }
+        .modal-content { background: white; border-radius: 20px; padding: 25px; max-width: 500px; width: 90%; max-height: 70vh; overflow-y: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        th, td { border-bottom: 1px solid #eee; padding: 10px 6px; text-align: left; }
+        button { padding: 10px 20px; background: #1e90ff; color: white; border: none; border-radius: 25px; cursor: pointer; font-weight: 600; margin: 5px; }
+        button.success { background: #27ae60; }
+        button.danger { background: #e74c3c; }
+        button.warning { background: #f39c12; }
+        .hidden { display: none !important; }
+        .support-text { margin-top: 20px; font-size: 12px; color: #888; text-align: center; }
+        .today-stats-link { font-size: 12px; color: #3498db; cursor: pointer; text-decoration: underline; margin-top: 5px; text-align: center; }
+        .btn-qr { position: absolute; top: 30px; right: 30px; background: #3498db; color: white; border: none; border-radius: 25px; padding: 10px 20px; cursor: pointer; font-weight: 600; }
 
-const redis = new Redis({
-  url: process.env.KV_REST_API_URL,
-  token: process.env.KV_REST_API_TOKEN,
-});
+        .chat-modal { position: fixed; top: 5%; left: 5%; width: 90%; height: 90%; background: white; border-radius: 20px; box-shadow: 0 0 30px rgba(0,0,0,0.3); z-index: 1000; display: flex; }
+        .room-list { width: 200px; border-right: 1px solid #eee; overflow-y: auto; padding: 10px; }
+        .room-item { padding: 12px; border-radius: 12px; cursor: pointer; position: relative; margin-bottom: 5px; }
+        .room-item.active { background: #e8f4fd; }
+        .room-item .badge-room { position: absolute; top: 5px; right: 5px; background: red; color: white; border-radius: 50%; width: 18px; height: 18px; font-size: 11px; line-height: 18px; text-align: center; }
+        .chat-area { flex: 1; display: flex; flex-direction: column; }
+        .chat-header { padding: 15px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+        .messages { flex: 1; overflow-y: auto; padding: 15px; }
+        .msg { margin-bottom: 10px; }
+        .msg.ai { text-align: left; }
+        .msg.guest { text-align: right; }
+        .msg.frontdesk { text-align: left; color: #1e90ff; }
+        .msg .bubble { display: inline-block; max-width: 70%; padding: 8px 14px; border-radius: 18px; background: #f0f4f8; }
+        .msg.guest .bubble { background: #1e90ff; color: white; }
+        .input-area { padding: 15px; border-top: 1px solid #eee; display: flex; gap: 10px; }
+        .input-area input { flex: 1; padding: 10px; border-radius: 20px; border: 1px solid #ddd; }
 
-async function checkPassword(password) {
-    const saved = await redis.get('config:frontdesk_password') || '1234';
-    return password === saved;
-}
+        .qr-room-item { display: inline-block; margin: 20px; text-align: center; }
+        .qr-room-item canvas { display: block; margin: 0 auto; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div id="loginPanel" class="login-box">
+        <div class="logo">🌊</div>
+        <h2>山予海AI管家前台端</h2>
+        <input type="password" id="frontPass" placeholder="输入密码" style="width:100%; padding:12px; margin:15px 0; border-radius:12px; border:1px solid #ddd;">
+        <button id="loginBtn" onclick="login()">进入前台</button>
+        <p id="loginMsg" style="color:red;"></p>
+    </div>
 
-export default async function handler(req, res) {
-    const url = new URL(req.url, `http://${req.headers.host}`);
-    // 优先从 POST body 获取 action，否则从查询参数获取，默认为 main
-    let action;
-    if (req.method === 'POST') {
-        action = req.body?.action || url.searchParams.get('action') || 'main';
-    } else {
-        action = url.searchParams.get('action') || 'main';
+    <div id="dashboardPanel" class="dashboard hidden">
+        <button class="btn-qr" onclick="showAllRoomsQR()">📱 客房二维码</button>
+        <div class="logo">🌊</div>
+        <h2>山予海AI管家前台端</h2>
+        <div class="card-row">
+            <div class="type-card" onclick="openUsageList()"><div class="label">今日AI管家使用</div><div class="count" id="cnt_usage">0</div></div>
+            <div class="type-card" onclick="openRoomMsgList()"><div class="label">房客消息</div><div class="count" id="cnt_room_msg">0</div></div>
+            <div class="type-card" onclick="openNotifyList('clean')"><div class="label">清扫任务</div><div class="count" id="cnt_clean">0</div></div>
+            <div class="type-card" onclick="openNotifyList('car')"><div class="label">用车服务</div><div class="count" id="cnt_car">0</div></div>
+            <div class="type-card" onclick="openNotifyList('food')"><div class="label">订餐服务</div><div class="count" id="cnt_food">0</div></div>
+            <div class="type-card" onclick="openNotifyList('extend')"><div class="label">续住需求</div><div class="count" id="cnt_extend">0</div></div>
+        </div>
+        <div class="support-text">本程序由，山予海AI大模型团队提供技术支持</div>
+        <div class="today-stats-link" onclick="openTodayStats()">📊 今日处理统计</div>
+    </div>
+</div>
+
+<div id="listModal" class="modal-overlay"><div class="modal-content"><h4 id="listTitle"></h4><button id="historyBtn" onclick="showHistory()" style="margin-bottom:10px; background:#3498db;">处理记录</button><table id="notifTable"><tbody></tbody></table><button onclick="document.getElementById('listModal').style.display='none'">关闭</button></div></div>
+<div id="chatModal" class="chat-modal hidden"><div class="room-list" id="roomListContainer"></div><div class="chat-area"><div class="chat-header"><span id="currentRoomTitle"></span><button onclick="endTakeover()" class="danger">结束对话</button></div><div class="messages" id="chatMessages"></div><div class="input-area"><input type="text" id="chatInput" placeholder="输入回复..."><button onclick="sendMsg()">发送</button></div></div></div>
+<div id="qrModal" class="modal-overlay"><div class="modal-content" style="max-width:900px;width:95%;"><h3>所有房间二维码</h3><div id="qrContainer" style="display:flex;flex-wrap:wrap;justify-content:center;"></div><button onclick="document.getElementById('qrModal').style.display='none'">关闭</button></div></div>
+
+<script>
+    // 全局变量
+    let dashboardData = null, currentRoom = null, takeoverRooms = [], alertTimer = null, chatActive = false;
+    const PASSWORD = () => localStorage.getItem('front_password') || '';
+    const BASE = '/api/frontdesk';
+
+    // 初始化隐藏
+    document.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('chatModal').classList.add('hidden');
+        document.getElementById('dashboardPanel').classList.add('hidden');
+        document.getElementById('listModal').style.display = 'none';
+        localStorage.removeItem('front_password');
+        currentRoom = null; chatActive = false;
+        if (alertTimer) clearInterval(alertTimer);
+    });
+
+    function speak(text) {
+        if ('speechSynthesis' in window) {
+            const utter = new SpeechSynthesisUtterance(text); utter.lang = 'zh-CN'; utter.rate = 1.0;
+            speechSynthesis.speak(utter);
+        }
+    }
+    function stopAlert() { if (alertTimer) { clearInterval(alertTimer); alertTimer = null; } }
+    function startAlert() {
+        stopAlert();
+        const doSpeak = () => { for (let i = 0; i < 3; i++) setTimeout(() => speak('您有一条房客信息，请立即回复'), i * 1000); };
+        doSpeak();
+        alertTimer = setInterval(() => { if (chatActive || currentRoom) { stopAlert(); return; } doSpeak(); }, 30000);
     }
 
-    // 密码获取（POST 从 body，GET 从查询参数）
-    const password = req.method === 'GET' ? url.searchParams.get('password') : (req.body?.password || '');
-    if (!password || !(await checkPassword(password))) {
-        return res.status(403).json({ error: '密码错误' });
+    async function login() {
+        const pass = document.getElementById('frontPass').value;
+        const res = await fetch(BASE + '?password=' + encodeURIComponent(pass));
+        if (!res.ok) {
+            document.getElementById('loginMsg').innerText = '服务器错误或密码错误';
+            return;
+        }
+        const data = await res.json();
+        if (data.valid) {
+            localStorage.setItem('front_password', pass);
+            document.getElementById('loginPanel').classList.add('hidden');
+            document.getElementById('dashboardPanel').classList.remove('hidden');
+            document.getElementById('chatModal').classList.add('hidden');
+            currentRoom = null; chatActive = false; stopAlert();
+            dashboardData = data;
+            speak('登录成功');
+            updateDashboard(true);
+            startAutoRefresh();
+            startTakeoverCheck();
+        } else {
+            document.getElementById('loginMsg').innerText = data.error || '密码错误';
+        }
     }
 
-    try {
-        // ===== 主看板 =====
-        if (action === 'main' && req.method === 'GET') {
-            const today = new Date().toISOString().slice(0, 10);
-            const chatKeys = await redis.keys('chat:*');
-            const rooms = new Set();
-            for (const key of chatKeys) {
-                const raw = await redis.get(key);
-                if (raw) {
-                    try {
-                        const log = typeof raw === 'string' ? JSON.parse(raw) : raw;
-                        if (log.time && log.time.startsWith(today)) rooms.add(log.room || '未知');
-                    } catch (e) {}
-                }
+    function countByType(notifications) {
+        const c = { room_msg:0, clean:0, car:0, food:0, extend:0 };
+        if (notifications) notifications.forEach(n => { if (c.hasOwnProperty(n.type)) c[n.type]++; });
+        return c;
+    }
+
+    function updateDashboard(skipVoice) {
+        const notifications = dashboardData?.notifications || [];
+        const cur = countByType(notifications);
+        cur.usage = dashboardData?.todayRooms?.length || 0;
+        document.getElementById('cnt_usage').innerText = cur.usage;
+        document.getElementById('cnt_room_msg').innerText = cur.room_msg;
+        document.getElementById('cnt_clean').innerText = cur.clean;
+        document.getElementById('cnt_car').innerText = cur.car;
+        document.getElementById('cnt_food').innerText = cur.food;
+        document.getElementById('cnt_extend').innerText = cur.extend;
+        const now = new Date(), hour = now.getHours();
+        if (cur.room_msg > 0 && !chatActive && hour >= 8 && hour < 23) { if (!alertTimer) startAlert(); }
+        else if (cur.room_msg === 0) stopAlert();
+    }
+
+    function openRoomMsgList() {
+        if (currentRoom) document.getElementById('chatModal').classList.remove('hidden');
+        else openNotifyList('room_msg');
+    }
+
+    async function loadTakeoverRooms() {
+        if (!PASSWORD()) return;
+        const res = await fetch(`${BASE}?password=${encodeURIComponent(PASSWORD())}&action=takeover_rooms`);
+        const data = await res.json();
+        takeoverRooms = data.rooms || [];
+        renderRoomList();
+        const now = new Date(), hour = now.getHours();
+        if (takeoverRooms.length > 0 && !chatActive && hour >= 8 && hour < 23) {
+            if (document.getElementById('chatModal').classList.contains('hidden')) {
+                currentRoom = takeoverRooms[0].room;
+                document.getElementById('chatModal').classList.remove('hidden');
+                loadRoomMessages(currentRoom);
+                chatActive = true; stopAlert();
             }
-            const notifKeys = await redis.keys('notification:*');
-            const notifications = [];
-            for (const key of notifKeys) {
-                const raw = await redis.get(key);
-                if (raw) {
-                    const n = typeof raw === 'string' ? JSON.parse(raw) : raw;
-                    if (n.status === 'pending') notifications.push({ id: key.replace('notification:', ''), ...n });
-                }
-            }
-            return res.status(200).json({
-                valid: true,
-                todayRooms: Array.from(rooms),
-                notifications
+        }
+        if (currentRoom && !takeoverRooms.some(r => r.room === currentRoom)) {
+            currentRoom = null; document.getElementById('chatModal').classList.add('hidden'); chatActive = false;
+        }
+    }
+
+    function renderRoomList() {
+        document.getElementById('roomListContainer').innerHTML = takeoverRooms.map(r => `<div class="room-item ${currentRoom===r.room?'active':''}" onclick="openRoomChat('${r.room}')">${r.room} ${r.unread>0?`<span class="badge-room">${r.unread}</span>`:''}</div>`).join('');
+    }
+
+    async function openRoomChat(room) {
+        currentRoom = room; document.getElementById('currentRoomTitle').innerText = `房间 ${room}`;
+        renderRoomList(); document.getElementById('chatModal').classList.remove('hidden');
+        loadRoomMessages(room); chatActive = true; stopAlert();
+    }
+
+    async function loadRoomMessages(room) {
+        const res = await fetch(`${BASE}?password=${encodeURIComponent(PASSWORD())}&action=chat_messages&room=${room}`);
+        const data = await res.json();
+        document.getElementById('chatMessages').innerHTML = data.messages.map(m => {
+            let cls = 'ai'; if (m.sender === 'guest') cls = 'guest'; else if (m.sender === 'frontdesk') cls = 'frontdesk';
+            return `<div class="msg ${cls}"><div class="bubble">${m.text}</div></div>`;
+        }).join('');
+    }
+
+    async function sendMsg() {
+        const text = document.getElementById('chatInput').value.trim();
+        if (!text || !currentRoom) return;
+        await fetch(`${BASE}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ password: PASSWORD(), action: 'send_msg', room: currentRoom, text }) });
+        document.getElementById('chatInput').value = '';
+        loadRoomMessages(currentRoom);
+    }
+
+    async function endTakeover() {
+        if (!currentRoom) return;
+        await fetch(`${BASE}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ password: PASSWORD(), action: 'end_takeover', room: currentRoom }) });
+        document.getElementById('chatModal').classList.add('hidden'); currentRoom = null; chatActive = false;
+        loadTakeoverRooms();
+    }
+
+    async function openNotifyList(type) {
+        document.getElementById('listTitle').innerText = getTypeName(type) + ' 待处理列表';
+        document.getElementById('historyBtn').style.display = 'inline-block';
+        await loadNotifications(type);
+        document.getElementById('listModal').style.display = 'flex';
+    }
+
+    async function loadNotifications(type) {
+        const res = await fetch(`${BASE}?password=${encodeURIComponent(PASSWORD())}&action=notifications&type=${type}`);
+        const data = await res.json();
+        const tbody = document.querySelector('#notifTable tbody');
+        tbody.innerHTML = '';
+        if (data.notifications && data.notifications.length) {
+            data.notifications.forEach(n => tbody.innerHTML += `<tr><td>${n.room}</td><td>${n.question}</td><td><button onclick="handleNotif('${n.id}')" class="success">处理完成</button></td></tr>`);
+        } else tbody.innerHTML = '<tr><td colspan="3">暂无数据</td></tr>';
+    }
+
+    async function handleNotif(id) {
+        await fetch(`${BASE}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ password: PASSWORD(), action: 'notifications', id }) });
+        const title = document.getElementById('listTitle').innerText;
+        const map = { '清扫任务':'clean', '用车服务':'car', '订餐服务':'food', '续住需求':'extend' };
+        const key = Object.entries(map).find(([k,v])=>title.includes(k))?.[1];
+        if (key) { await loadNotifications(key); const r = await fetch(BASE + '?password=' + encodeURIComponent(PASSWORD())); dashboardData = await r.json(); updateDashboard(); }
+    }
+
+    async function showHistory() {
+        const title = document.getElementById('listTitle').innerText;
+        const map = { '清扫任务':'clean', '用车服务':'car', '订餐服务':'food', '续住需求':'extend' };
+        const key = Object.entries(map).find(([k,v])=>title.includes(k))?.[1];
+        if (!key) return;
+        const res = await fetch(`${BASE}?password=${encodeURIComponent(PASSWORD())}&action=notifications&type=${key}&history=1`);
+        const data = await res.json();
+        const tbody = document.querySelector('#notifTable tbody');
+        tbody.innerHTML = '';
+        if (data.history) data.history.forEach(n => tbody.innerHTML += `<tr><td>${n.room}</td><td>${n.question}</td><td>${new Date(n.resolvedAt).toLocaleString()}</td></tr>`);
+        else tbody.innerHTML = '<tr><td colspan="3">暂无记录</td></tr>';
+    }
+
+    function openTodayStats() { alert('今日处理统计'); }
+    function openUsageList() {
+        const rooms = dashboardData?.todayRooms || [];
+        document.getElementById('listTitle').innerText = '今日使用房间';
+        document.getElementById('historyBtn').style.display = 'none';
+        const tbody = document.querySelector('#notifTable tbody');
+        tbody.innerHTML = '';
+        if (rooms.length > 0) rooms.forEach(r => tbody.innerHTML += `<tr><td>${r}</td></tr>`);
+        else tbody.innerHTML = '<tr><td>暂无</td></tr>';
+        document.getElementById('listModal').style.display = 'flex';
+    }
+    function getTypeName(t) { const m = { usage:'今日使用', room_msg:'房客消息', clean:'清扫任务', car:'用车服务', food:'订餐服务', extend:'续住需求' }; return m[t]||''; }
+
+    // 二维码生成
+    async function showAllRoomsQR() {
+        const res = await fetch(`${BASE}?password=${encodeURIComponent(PASSWORD())}&action=rooms`);
+        const data = await res.json();
+        if (!data.rooms) return alert('获取失败');
+        const container = document.getElementById('qrContainer');
+        container.innerHTML = '';
+        const logo = new Image(); logo.src = '/logo.jpg';
+        logo.onload = () => {
+            data.rooms.forEach(room => {
+                const url = `${location.origin}/room-chat.html?room=${room.id}&token=${room.token}`;
+                const canvas = document.createElement('canvas'); canvas.width = 300; canvas.height = 300;
+                QRCode.toCanvas(canvas, url, { width: 300, margin: 1, errorCorrectionLevel: 'H' }, () => {
+                    const ctx = canvas.getContext('2d');
+                    const s = 70, x = (300-s)/2, y = (300-s)/2;
+                    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(150,150,s/2+4,0,2*Math.PI); ctx.fill();
+                    ctx.drawImage(logo, x, y, s, s);
+                });
+                const div = document.createElement('div'); div.className = 'qr-room-item';
+                div.innerHTML = `<strong>${room.name||room.id}</strong>`;
+                div.appendChild(canvas);
+                div.innerHTML += `<div class="qr-btns"><button class="success" onclick="saveQR('${room.id}')">💾保存</button><button class="warning" onclick="refreshRoomQR('${room.id}')">🔄刷新</button></div>`;
+                container.appendChild(div);
             });
-        }
-
-        // ===== 通知列表（按类型） =====
-        if (action === 'notifications' && req.method === 'GET') {
-            const type = url.searchParams.get('type');
-            const history = url.searchParams.get('history');
-            const keys = await redis.keys('notification:*');
-            const items = [];
-            for (const key of keys) {
-                const raw = await redis.get(key);
-                if (!raw) continue;
-                const n = typeof raw === 'string' ? JSON.parse(raw) : raw;
-                if (history === '1' && n.status === 'done') {
-                    if (!type || n.type === type) items.push({ id: key.replace('notification:', ''), room: n.room, question: n.question, resolvedAt: n.resolvedAt, type: n.type });
-                } else if (!history && n.status === 'pending' && n.type === type) {
-                    items.push({ id: key.replace('notification:', ''), room: n.room, question: n.question, time: n.time });
-                }
-            }
-            items.sort((a, b) => new Date(b.resolvedAt || b.time) - new Date(a.resolvedAt || a.time));
-            return res.status(200).json(history === '1' ? { history: items } : { notifications: items });
-        }
-
-        // 标记通知为已处理（POST）
-        if (action === 'notifications' && req.method === 'POST') {
-            const { id } = req.body || {};
-            if (!id) return res.status(400).json({ error: '缺少通知ID' });
-            const raw = await redis.get(`notification:${id}`);
-            if (!raw) return res.status(404).json({ error: '通知不存在' });
-            const n = typeof raw === 'string' ? JSON.parse(raw) : raw;
-            n.status = 'done';
-            n.resolvedAt = new Date().toISOString();
-            await redis.set(`notification:${id}`, JSON.stringify(n));
-            return res.status(200).json({ success: true });
-        }
-
-        // ===== 接管房间列表 =====
-        if (action === 'takeover_rooms' && req.method === 'GET') {
-            const keys = await redis.keys('takeover:*');
-            const rooms = [];
-            for (const key of keys) {
-                const data = await redis.get(key);
-                if (data) {
-                    const takeover = typeof data === 'string' ? JSON.parse(data) : data;
-                    if (takeover.active) {
-                        const r = key.replace('takeover:', '');
-                        const msgKeys = await redis.keys(`pending_msg:${r}:*`);
-                        rooms.push({ room: r, unread: msgKeys.length, startTime: takeover.startTime });
-                    }
-                }
-            }
-            return res.status(200).json({ rooms });
-        }
-
-        // 获取聊天记录
-        if (action === 'chat_messages' && req.method === 'GET') {
-            const room = url.searchParams.get('room');
-            if (!room) return res.status(400).json({ error: '缺少房间号' });
-            const chatKeys = await redis.keys('chat:*');
-            const messages = [];
-            for (const key of chatKeys) {
-                const data = await redis.get(key);
-                if (data) {
-                    try {
-                        const msg = typeof data === 'string' ? JSON.parse(data) : data;
-                        if (msg.room === room && msg.reply) messages.push({ sender: 'ai', text: msg.reply, time: msg.time });
-                    } catch (e) {}
-                }
-            }
-            const frontKeys = await redis.keys(`front_msg:${room}:*`);
-            for (const key of frontKeys) {
-                const data = await redis.get(key);
-                if (data) {
-                    try {
-                        const msg = typeof data === 'string' ? JSON.parse(data) : data;
-                        messages.push({ sender: msg.sender, text: msg.text, time: msg.time });
-                    } catch (e) {}
-                }
-            }
-            const pendingKeys = await redis.keys(`pending_msg:${room}:*`);
-            for (const key of pendingKeys) {
-                const data = await redis.get(key);
-                if (data) {
-                    try {
-                        const msg = typeof data === 'string' ? JSON.parse(data) : data;
-                        messages.push({ sender: 'guest', text: msg.text, time: msg.time });
-                    } catch (e) {}
-                }
-            }
-            messages.sort((a, b) => new Date(a.time) - new Date(b.time));
-            return res.status(200).json({ messages });
-        }
-
-        // 发送消息
-        if (action === 'send_msg' && req.method === 'POST') {
-            const { room, text } = req.body || {};
-            if (!room || !text) return res.status(400).json({ error: '缺少参数' });
-            await redis.set(`front_msg:${room}:${Date.now()}`, JSON.stringify({ room, sender: 'frontdesk', text, time: new Date().toISOString() }));
-            const pendingKeys = await redis.keys(`pending_msg:${room}:*`);
-            for (const key of pendingKeys) await redis.del(key);
-            return res.status(200).json({ success: true });
-        }
-
-        // 结束接管
-        if (action === 'end_takeover' && req.method === 'POST') {
-            const { room } = req.body || {};
-            await redis.del(`takeover:${room}`);
-            const endKey = `chat:${Date.now()}:end`;
-            await redis.set(endKey, JSON.stringify({
-                room, question: '', reply: '本次对话已结束，你的专属AI管家小予我又回来啦。还有什么可以帮到您的吗?',
-                time: new Date().toISOString()
-            }));
-            await redis.expire(endKey, 60 * 60 * 24 * 90);
-            return res.status(200).json({ success: true });
-        }
-
-        // 语音设置
-        if (action === 'voice' && req.method === 'GET') {
-            const voice = await redis.get('config:voice') || '';
-            return res.status(200).json({ voice });
-        }
-
-        // 房间二维码列表
-        if (action === 'rooms' && req.method === 'GET') {
-            const keys = await redis.keys('room:*');
-            const rooms = [];
-            for (const key of keys) {
-                const data = await redis.get(key);
-                if (data) {
-                    const room = typeof data === 'string' ? JSON.parse(data) : data;
-                    rooms.push({ id: key.replace('room:', ''), name: room.name, token: room.token });
-                }
-            }
-            return res.status(200).json({ rooms });
-        }
-
-        // 刷新房间二维码（POST，action 从 body 获取）
-        if (action === 'refresh_room' && req.method === 'POST') {
-            const { id } = req.body || {};
-            if (!id) return res.status(400).json({ error: '缺少房间号' });
-            const existing = await redis.get(`room:${id}`);
-            if (!existing) return res.status(404).json({ error: '房间不存在' });
-            const room = typeof existing === 'string' ? JSON.parse(existing) : existing;
-            const newToken = `${Date.now()}-${Math.random().toString(36).substr(2, 8)}`;
-            room.token = newToken;
-            room.updatedAt = new Date().toISOString();
-            await redis.set(`room:${id}`, JSON.stringify(room));
-            return res.status(200).json({ success: true, token: newToken });
-        }
-
-        return res.status(404).json({ error: '接口不存在' });
-    } catch (err) {
-        return res.status(500).json({ error: '服务器内部错误' });
+        };
+        document.getElementById('qrModal').style.display = 'flex';
     }
-}
+
+    function saveQR(id) {
+        const items = document.querySelectorAll('.qr-room-item');
+        for (let item of items) {
+            if (item.querySelector('strong')?.innerText.includes(id)) {
+                const canvas = item.querySelector('canvas');
+                if (canvas) { const a = document.createElement('a'); a.download = `房间${id}.png`; a.href = canvas.toDataURL(); a.click(); }
+                break;
+            }
+        }
+    }
+
+    async function refreshRoomQR(id) {
+        if (!confirm('刷新后旧二维码将失效，确定继续吗？')) return;
+        const res = await fetch(`${BASE}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ password: PASSWORD(), action: 'refresh_room', id }) });
+        const data = await res.json();
+        if (data.success) { alert('二维码已刷新！'); showAllRoomsQR(); } else alert('刷新失败：' + (data.error || '未知错误'));
+    }
+
+    function startTakeoverCheck() { setInterval(() => { if (!document.getElementById('dashboardPanel').classList.contains('hidden')) { loadTakeoverRooms(); if (currentRoom) loadRoomMessages(currentRoom); } }, 5000); }
+    function startAutoRefresh() { setInterval(async () => { if (document.getElementById('dashboardPanel').classList.contains('hidden')) return; const r = await fetch(BASE + '?password=' + encodeURIComponent(PASSWORD())); dashboardData = await r.json(); updateDashboard(); }, 30000); }
+    window.addEventListener('beforeunload', stopAlert);
+</script>
+</body>
+</html>
