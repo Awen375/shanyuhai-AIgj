@@ -152,7 +152,7 @@ ${knowledgeText || '暂无'}`;
                 'Authorization': `Bearer ${process.env.VOLCENGINE_API_KEY}`
             },
             body: JSON.stringify({
-                model: 'deepseek-v3-250324',   // 火山方舟的 V3 模型名
+                model: 'ep-20260606133152-72n4l',   // 火山方舟的 V3 模型名
                 messages: [
                     { role: 'system', content: systemPrompt },
                     { role: 'user', content: question }
