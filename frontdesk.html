@@ -128,12 +128,12 @@
         alertTimer = setInterval(() => { if (chatActive || currentRoom) { stopAlert(); return; } doSpeak(); }, 30000);
     }
 
-    // 心跳发送（每30秒）
+    // ★ 修复心跳路径
     function sendHeartbeat() {
-        fetch(`${BASE}/heartbeat`).catch(() => {});
+        fetch(`${BASE}?action=heartbeat`).catch(() => {});
     }
     setInterval(sendHeartbeat, 30000);
-    sendHeartbeat(); // 登录后立刻发送一次
+    sendHeartbeat();
 
     async function login() {
         const pass = document.getElementById('frontPass').value;
@@ -151,7 +151,7 @@
             updateDashboard(true);
             startAutoRefresh();
             startTakeoverCheck();
-            sendHeartbeat(); // 立即发送心跳
+            sendHeartbeat();
         } else {
             document.getElementById('loginMsg').innerText = data.error || '密码错误';
         }
@@ -178,12 +178,11 @@
         else if (cur.room_msg === 0) stopAlert();
     }
 
-    // ★ 点击“房客消息”卡片直接打开对话框
+    // ★ 点击“房客消息”直接打开对话框
     async function openRoomMsgList() {
         await loadTakeoverRooms(true);
         document.getElementById('chatModal').classList.remove('hidden');
-        // 如果没有接管房间且当前未选中房间，显示提示
-        if (!currentRoom && takeoverRooms.length === 0) {
+        if (takeoverRooms.length === 0) {
             document.getElementById('roomListContainer').innerHTML = '<div style="padding:20px;color:#888;">暂无房客消息</div>';
             document.getElementById('chatMessages').innerHTML = '<div style="padding:20px;color:#888;">选择左侧房间查看消息</div>';
         }
@@ -271,7 +270,7 @@
         }
     }
 
-    // 普通通知功能（清扫、用车等）保持不变
+    // 普通通知功能
     async function openNotifyList(type) {
         document.getElementById('listTitle').innerText = getTypeName(type) + ' 待处理列表';
         document.getElementById('historyBtn').style.display = 'inline-block';
