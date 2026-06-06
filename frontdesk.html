@@ -88,6 +88,7 @@
     const PASSWORD = () => localStorage.getItem('front_password') || '';
     const BASE = '/api/frontdesk';
 
+    // 初始化隐藏
     document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('chatModal').classList.add('hidden');
         document.getElementById('dashboardPanel').classList.add('hidden');
@@ -115,7 +116,7 @@
         const pass = document.getElementById('frontPass').value;
         const res = await fetch(BASE + '?password=' + encodeURIComponent(pass));
         if (!res.ok) {
-            document.getElementById('loginMsg').innerText = '密码错误或网络异常';
+            document.getElementById('loginMsg').innerText = '服务器错误，请稍后重试';
             return;
         }
         const data = await res.json();
@@ -161,6 +162,7 @@
         else openNotifyList('room_msg');
     }
 
+    // 接管房间相关
     async function loadTakeoverRooms() {
         if (!PASSWORD()) return;
         const res = await fetch(`${BASE}/chat?password=${encodeURIComponent(PASSWORD())}&action=rooms`);
@@ -215,6 +217,7 @@
         loadTakeoverRooms();
     }
 
+    // 普通通知
     async function openNotifyList(type) {
         document.getElementById('listTitle').innerText = getTypeName(type) + ' 待处理列表';
         document.getElementById('historyBtn').style.display = 'inline-block';
@@ -253,7 +256,7 @@
         else tbody.innerHTML = '<tr><td colspan="3">暂无记录</td></tr>';
     }
 
-    function openTodayStats() { alert('今日处理统计'); }
+    function openTodayStats() { alert('今日处理统计功能'); }
     function openUsageList() {
         const rooms = dashboardData?.todayRooms || [];
         document.getElementById('listTitle').innerText = '今日使用房间';
@@ -264,7 +267,11 @@
         else tbody.innerHTML = '<tr><td>暂无</td></tr>';
         document.getElementById('listModal').style.display = 'flex';
     }
-    function getTypeName(t) { const m = { usage:'今日使用', room_msg:'房客消息', clean:'清扫任务', car:'用车服务', food:'订餐服务', extend:'续住需求' }; return m[t]||''; }
+
+    function getTypeName(t) {
+        const m = { usage:'今日使用', room_msg:'房客消息', clean:'清扫任务', car:'用车服务', food:'订餐服务', extend:'续住需求' };
+        return m[t] || '';
+    }
 
     // 二维码功能
     async function showAllRoomsQR() {
@@ -293,21 +300,23 @@
         };
         document.getElementById('qrModal').style.display = 'flex';
     }
+
     function saveQR(id) {
         const items = document.querySelectorAll('.qr-room-item');
         for (let item of items) {
-            if (item.querySelector('strong').innerText.includes(id)) {
+            if (item.querySelector('strong')?.innerText.includes(id)) {
                 const canvas = item.querySelector('canvas');
                 if (canvas) { const a = document.createElement('a'); a.download = `房间${id}.png`; a.href = canvas.toDataURL(); a.click(); }
                 break;
             }
         }
     }
+
     async function refreshRoomQR(id) {
-        if (!confirm('旧码将失效，确定？')) return;
+        if (!confirm('刷新后旧二维码将失效，确定继续吗？')) return;
         const res = await fetch(`${BASE}/rooms/refresh?password=${encodeURIComponent(PASSWORD())}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ id }) });
         const data = await res.json();
-        if (data.success) { alert('已刷新'); showAllRoomsQR(); } else alert('失败');
+        if (data.success) { alert('二维码已刷新！'); showAllRoomsQR(); } else alert('刷新失败：' + (data.error || '未知错误'));
     }
 
     function startTakeoverCheck() { setInterval(() => { if (!document.getElementById('dashboardPanel').classList.contains('hidden')) { loadTakeoverRooms(); if (currentRoom) loadRoomMessages(currentRoom); } }, 5000); }
