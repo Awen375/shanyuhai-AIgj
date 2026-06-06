@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>山予海AI管家前台端</title>
+    <title>山予海 · 前台端</title>
     <link rel="icon" type="image/png" href="/favicon.png">
     <style>
         body { font-family: 'PingFang SC','Microsoft YaHei',sans-serif; background: #f0f4f8; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
@@ -50,7 +50,7 @@
 <body>
 <div class="container">
     <div id="loginPanel" class="login-box">
-        <img src="/logo.jpg" alt="logo" class="logo-icon" style="width: 80px; height: auto;" />
+        <div class="logo">🌊</div>
         <h2>山予海AI管家前台端</h2>
         <input type="password" id="frontPass" placeholder="输入密码" style="width:100%; padding:12px; margin:15px 0; border-radius:12px; border:1px solid #ddd;">
         <button id="loginBtn" onclick="login()">进入前台</button>
@@ -58,7 +58,7 @@
     </div>
 
     <div id="dashboardPanel" class="dashboard hidden">
-        <img src="/logo.jpg" alt="logo" class="logo-icon" style="width: 80px; height: auto;" />
+        <div class="logo">🌊</div>
         <h2>山予海AI管家前台端</h2>
         <div class="card-row">
             <div class="type-card" onclick="openUsageList()">
@@ -121,11 +121,17 @@
     let dashboardData = null;
     let currentRoom = null;
     let takeoverRooms = [];
-    let alertTimer = null;        // 语音定时器
+    let alertTimer = null;
     let alertSpeakCount = 0;
-    let chatActive = false;       // 是否已激活对话
+    let chatActive = false;
     const PASSWORD = () => localStorage.getItem('front_password') || '';
     const BASE = '/api/frontdesk';
+
+    // ===== 初始化：强制隐藏对话框，清空状态 =====
+    document.getElementById('chatModal').classList.add('hidden');
+    currentRoom = null;
+    chatActive = false;
+    stopAlert();
 
     function speak(text) {
         if ('speechSynthesis' in window) {
@@ -166,6 +172,11 @@
             localStorage.setItem('front_password', pass);
             document.getElementById('loginPanel').classList.add('hidden');
             document.getElementById('dashboardPanel').classList.remove('hidden');
+            // 确保对话框关闭
+            document.getElementById('chatModal').classList.add('hidden');
+            currentRoom = null;
+            chatActive = false;
+            stopAlert();
             dashboardData = data;
             updateDashboard(true);
             startAutoRefresh();
@@ -292,7 +303,7 @@
         loadTakeoverRooms();
     }
 
-    // ===== 普通通知（清扫、用车等） =====
+    // ===== 普通通知 =====
     async function openNotifyList(type) {
         document.getElementById('listTitle').innerText = getTypeName(type) + ' 待处理列表';
         document.getElementById('historyBtn').style.display = 'inline-block';
@@ -326,7 +337,6 @@
             headers: {'Content-Type':'application/json'},
             body: JSON.stringify({ id, password: pass })
         });
-        // 重新加载当前类型列表
         const title = document.getElementById('listTitle').innerText;
         const typeMap = { '清扫任务':'clean', '用车服务':'car', '订餐服务':'food', '续住需求':'extend' };
         const typeKey = Object.entries(typeMap).find(([k,v]) => title.includes(k))?.[1];
@@ -362,8 +372,8 @@
     }
 
     function openTodayStats() {
-        // 实现今日处理统计弹窗（可复用之前的逻辑）
-        alert('今日处理统计功能待完善');
+        // 此处可实现今日处理统计，复用之前逻辑
+        alert('今日处理统计');
     }
 
     function openUsageList() {
@@ -403,6 +413,11 @@
             updateDashboard();
         }, 30000);
     }
+
+    // ===== 页面卸载时清理定时器 =====
+    window.addEventListener('beforeunload', () => {
+        stopAlert();
+    });
 </script>
 </body>
 </html>
