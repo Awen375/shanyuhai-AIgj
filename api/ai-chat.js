@@ -5,7 +5,6 @@ const redis = new Redis({
   token: process.env.KV_REST_API_TOKEN,
 });
 
-// 民宿完整信息（保持原来的）
 const hotelInfo = `
 【民宿基本信息】
 - 民宿名称：霞浦县山予海民宿
@@ -58,6 +57,9 @@ Day3：早餐 → 下尾岛 → 县城逛逛 → 返程
 - 帮忙联系包车师傅
 - 可代订海鲜大排档
 - 前台可借充电宝、雨伞
+
+【重要提醒】
+关于潮汐和赶海时间的建议为估算值，存在不确定性。如需获取最准确的潮汐信息，建议咨询前台的小伙伴。需要我帮您呼叫前台吗？如需呼叫，请回复“呼叫前台”。
 `;
 
 async function getAISettings() {
@@ -82,14 +84,10 @@ async function matchKeywords(text) {
     if (!keywordsData) return null;
     const list = typeof keywordsData === 'string' ? JSON.parse(keywordsData) : keywordsData;
     if (!Array.isArray(list)) return null;
-    let fallback = null;
     for (const item of list) {
-        if (text.includes(item.keyword)) {
-            if (item.type !== 'other') return item;
-            else fallback = item;
-        }
+        if (text.includes(item.keyword)) return item;
     }
-    return fallback;
+    return null;
 }
 
 export default async function handler(req, res) {
@@ -99,6 +97,29 @@ export default async function handler(req, res) {
 
     try {
         const aiSettings = await getAISettings();
+        
+        // 检查房间是否被前台接管
+        const takeoverKey = `takeover:${room}`;
+        const takeoverData = await redis.get(takeoverKey);
+        const isTakeover = takeoverData && typeof takeoverData === 'object' && takeoverData.active;
+
+        if (isTakeover) {
+            // 存储客人消息，等待前台回复
+            const msgKey = `pending_msg:${room}:${Date.now()}`;
+            await redis.set(msgKey, JSON.stringify({
+                room,
+                sender: 'guest',
+                text: question,
+                time: new Date().toISOString()
+            }));
+            await redis.expire(msgKey, 60 * 60 * 24);
+            // 重置自动结束计时器（前台接管期间每次客人消息都刷新）
+            takeoverData.lastGuestMsg = Date.now();
+            await redis.set(takeoverKey, JSON.stringify(takeoverData));
+            return res.status(200).json({ reply: '' }); // 不回复，等待前台
+        }
+
+        // 正常AI处理
         const knowledgeKeys = await redis.keys('knowledge:*');
         let knowledgeText = '';
         for (const key of knowledgeKeys) {
@@ -109,37 +130,29 @@ export default async function handler(req, res) {
             }
         }
 
-        // 获取当前日期和时间，并转换为北京时间
         const now = new Date();
-        // 转为北京时间（东八区）
         const beijingTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }));
-        const todayStr = beijingTime.toLocaleDateString('zh-CN', { 
-            year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' 
-        });
+        const todayStr = beijingTime.toLocaleDateString('zh-CN', { year:'numeric', month:'long', day:'numeric', weekday:'long' });
         const timeStr = beijingTime.toLocaleTimeString('zh-CN', { hour12: false });
-        const hour = beijingTime.getHours(); // 0-23
+        const hour = beijingTime.getHours();
+        const lunarDay = ((beijingTime.getTime() / 86400000 + 25569) % 29.53);
+        const isSpringTide = (lunarDay < 4 || lunarDay > 25.5 || (lunarDay > 12 && lunarDay < 17));
 
-        // 根据当前时间推荐合适的活动（避免死板硬推荐）
         let activityHint = '';
-        if (hour >= 5 && hour < 8) {
-            activityHint = '现在是清晨，如果客人询问推荐活动，可以推荐去看花竹的日出，或者晨间海滩散步。';
-        } else if (hour >= 8 && hour < 11) {
-            activityHint = '现在是上午，可以推荐小皓赶海（如果潮汐合适）、附近沙滩游玩，或者享用民宿早餐。';
-        } else if (hour >= 11 && hour < 14) {
-            activityHint = '现在是中午，可以推荐三沙镇吃海鲜大排档，或者回民宿休息。';
-        } else if (hour >= 14 && hour < 17) {
-            activityHint = '现在是下午，可以推荐高罗沙滩、大京沙滩，或者露台喝下午茶看海。';
-        } else if (hour >= 17 && hour < 19) {
-            activityHint = '现在是傍晚，强烈推荐去东壁村看日落，步行10分钟就能到。';
-        } else if (hour >= 19 && hour < 22) {
-            activityHint = '现在是晚上，可以推荐露台吹海风看星星，或者去三沙镇吃夜宵。';
-        } else {
-            activityHint = '现在是深夜，提醒客人早点休息，明天可以早起看日出。';
-        }
+        if (hour >= 5 && hour < 8) activityHint = '现在是清晨，可以推荐花竹日出或晨间海滩散步。';
+        else if (hour >= 8 && hour < 11) activityHint = '现在是上午，适合小皓赶海或附近沙滩游玩。';
+        else if (hour >= 11 && hour < 14) activityHint = '现在是中午，推荐三沙镇海鲜大排档。';
+        else if (hour >= 14 && hour < 17) activityHint = '现在是下午，适合高罗沙滩或露台下午茶。';
+        else if (hour >= 17 && hour < 19) activityHint = '现在是傍晚，强烈推荐东壁村看日落。';
+        else if (hour >= 19 && hour < 22) activityHint = '现在是晚上，可以露台吹风或三沙镇夜宵。';
+        else activityHint = '现在是深夜，提醒客人早休息，明早可看日出。';
+
+        let tideHint = isSpringTide ? '近期正值大潮，退潮幅度大，赶海收获会更多哦！' : '目前是小潮期，海滩暴露面积较小，但依然可以享受赶海乐趣。';
 
         let systemPrompt = `你是"${aiSettings.name}"，山予海民宿的专属AI管家，性格亲切活泼，像朋友一样和客人交流。
 现在是北京时间 ${todayStr} ${timeStr}。${activityHint}
-当客人询问推荐活动或攻略时，请结合当前时间给出自然贴切的建议，不要在不合适的时间推荐（比如凌晨推荐看日落）。
+${tideHint}
+当客人询问赶海时间时，请根据当前日期估算退潮时段（每天退潮大约比前一天推迟40-50分钟），并告诉客人最佳赶海时间是退潮后2小时内。可以结合农历日期判断大潮小潮，并给出相应的建议。如果无法精确计算，可建议客人咨询前台获取准确的潮汐表，同时提供赶海技巧和安全提示。
 
 【核心规则】
 1. 你只能回答与山予海民宿及相关旅游的问题。遇到完全无关的问题，请礼貌拒绝。
@@ -148,10 +161,10 @@ export default async function handler(req, res) {
 4. 用第一人称，亲切自然，适当使用emoji。
 5. 如果遇到需要人工处理的问题，提示拨打前台电话 0593-8850999。
 6. 如果客人问到关于日落日出的时间以及潮汐时间，按照真实的时间回复。
-7. 回复客人的时候关键信息不要用*来隔开用空格来隔开。
 
 【重要提醒】
 关于潮汐和赶海时间的建议为估算值，存在不确定性。如需获取最准确的潮汐信息，建议咨询前台的小伙伴。需要我帮您呼叫前台吗？如需呼叫，请回复“呼叫前台”。
+
 【民宿完整信息】
 ${hotelInfo}
 
@@ -160,6 +173,29 @@ ${knowledgeText || '暂无'}`;
 
         const matched = await matchKeywords(question);
 
+        // ★ 处理“房客消息”类型的关键词
+        if (matched && matched.type === 'room_msg') {
+            // 创建通知
+            await redis.set(`notification:${Date.now()}`, JSON.stringify({
+                room: room || '未知',
+                question,
+                reply: '',
+                keyword: matched.keyword,
+                type: 'room_msg',
+                time: new Date().toISOString(),
+                status: 'pending'
+            }));
+            // 设置房间接管状态
+            await redis.set(takeoverKey, JSON.stringify({
+                active: true,
+                startTime: Date.now(),
+                lastGuestMsg: Date.now()
+            }));
+            // 返回固定回复
+            return res.status(200).json({ reply: '正在通知前台的小伙伴，接通中请稍等...' });
+        }
+
+        // 其他类型关键词的回复扩展逻辑（不变）
         if (matched && matched.reply) {
             let replyBody = matched.reply;
             let instruction = '';
@@ -172,7 +208,7 @@ ${knowledgeText || '暂无'}`;
             if (instruction) systemPrompt += `\n【回复指示】请严格遵循以下要求来调整回复的语气、风格或内容：${instruction}`;
         }
 
-        // 使用火山方舟 V3.2，接入点为 ep-m-20260521173515-xfdzp
+        // 调用火山方舟 V3.2
         const response = await fetch('https://ark.cn-beijing.volces.com/api/v3/chat/completions', {
             method: 'POST',
             headers: {
@@ -180,7 +216,7 @@ ${knowledgeText || '暂无'}`;
                 'Authorization': `Bearer ${process.env.VOLCENGINE_API_KEY}`
             },
             body: JSON.stringify({
-                model: 'ep-m-20260521173515-xfdzp',   // 你的 V3.2 接入点
+                model: 'ep-m-20260521173515-xfdzp',
                 messages: [
                     { role: 'system', content: systemPrompt },
                     { role: 'user', content: question }
@@ -197,10 +233,8 @@ ${knowledgeText || '暂无'}`;
         let reply = content;
 
         // 记录未回答问题
-        const unsurePhrases = [
-            '不太确定', '无法回答', '这个我不太清楚', '抱歉，我暂时无法',
-            '建议您拨打前台', '您可以咨询前台', '暂时无法提供', '我也不太了解', '抱歉'
-        ];
+        const unsurePhrases = ['不太确定', '无法回答', '这个我不太清楚', '抱歉，我暂时无法',
+            '建议您拨打前台', '您可以咨询前台', '暂时无法提供', '我也不太了解'];
         if (unsurePhrases.some(phrase => reply.includes(phrase))) {
             await redis.set(`unanswered:${Date.now()}`, JSON.stringify({
                 question, room: room || '', time: new Date().toISOString(), status: 'pending'
@@ -209,14 +243,21 @@ ${knowledgeText || '暂无'}`;
             if (aiSettings.fallbackNote) reply += '\n' + aiSettings.fallbackNote;
         }
 
+        // 存储聊天记录
         const chatKey = `chat:${Date.now()}:${Math.random().toString(36).substr(2,6)}`;
         await redis.set(chatKey, JSON.stringify({ room: room || '未知', question, reply, time: new Date().toISOString() }));
         await redis.expire(chatKey, 60 * 60 * 24 * 90);
 
-        if (matched && matched.type !== 'other') {
+        // 创建通知（排除 room_msg，已在前面处理）
+        if (matched && matched.type !== 'other' && matched.type !== 'room_msg') {
             await redis.set(`notification:${Date.now()}`, JSON.stringify({
-                room: room || '未知', question, reply, keyword: matched.keyword, type: matched.type,
-                time: new Date().toISOString(), status: 'pending'
+                room: room || '未知',
+                question,
+                reply,
+                keyword: matched.keyword,
+                type: matched.type,
+                time: new Date().toISOString(),
+                status: 'pending'
             }));
         }
 
