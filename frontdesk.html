@@ -280,13 +280,14 @@
         document.getElementById('chatMessages').scrollTop = document.getElementById('chatMessages').scrollHeight;
     }
 
+    // ★ 发送消息（携带 groupId，现阶段传空字符串，表示对所有同房间 guest 可见）
     async function sendMsg() {
         const text = document.getElementById('chatInput').value.trim();
         if (!text || !currentRoom) { alert('请选择左侧已触发的客房'); return; }
         await fetch(`${BASE}`, { 
             method:'POST', 
             headers:{'Content-Type':'application/json'}, 
-            body: JSON.stringify({ password: PASSWORD(), action: 'send_msg', room: currentRoom, text }) 
+            body: JSON.stringify({ password: PASSWORD(), action: 'send_msg', room: currentRoom, text, groupId: '' }) 
         });
         document.getElementById('chatInput').value = '';
         loadRoomMessages(currentRoom);
@@ -360,7 +361,7 @@
     }
     function getTypeName(t) { const m = { usage:'今日使用', room_msg:'房客消息', clean:'清扫任务', car:'用车服务', food:'订餐服务', extend:'续住需求' }; return m[t]||''; }
 
-    // ========== 二维码（使用外部 API，稳定可靠） ==========
+    // ========== 二维码（使用外部 API） ==========
     async function showAllRoomsQR() {
         const res = await fetch(`${BASE}?password=${encodeURIComponent(PASSWORD())}&action=rooms`);
         const data = await res.json();
@@ -381,10 +382,8 @@
         div.setAttribute('data-room', room.id);
         div.innerHTML = `<strong>${room.name||room.id}</strong>`;
         const img = document.createElement('img');
-        // 使用外部 API 生成二维码，加随机数避免缓存
         img.src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(url)}&rnd=${Math.random()}`;
-        img.width = 200;
-        img.height = 200;
+        img.width = 200; img.height = 200;
         img.onerror = () => { img.src = ''; div.innerHTML += '<p style="color:red;">二维码加载失败</p>'; };
         div.appendChild(img);
         div.innerHTML += `<div class="qr-btns"><button class="success" onclick="saveQR('${room.id}')">💾保存</button><button class="warning" onclick="refreshRoomQR('${room.id}')">🔄刷新</button></div>`;
@@ -396,6 +395,7 @@
         document.getElementById('timeQRResult').innerHTML = '';
     }
 
+    // ★ 生成时效二维码，带唯一 groupId
     async function generateTimeQR() {
         const roomId = document.getElementById('timeRoomId').value.trim();
         const checkin = document.getElementById('checkinTime').value;
@@ -411,14 +411,16 @@
         const checkinStr = formatTime(checkin);
         const checkoutStr = formatTime(checkout);
 
-        const url = `${location.origin}/room-chat.html?room=${room.id}&token=${room.token}&checkin=${checkinStr}&checkout=${checkoutStr}`;
+        // 生成唯一群组 ID
+        const groupId = `${Date.now()}-${Math.random().toString(36).substr(2,8)}`;
+
+        const url = `${location.origin}/room-chat.html?room=${room.id}&token=${room.token}&checkin=${checkinStr}&checkout=${checkoutStr}&groupId=${encodeURIComponent(groupId)}`;
         const div = document.createElement('div');
         div.className = 'qr-room-item';
         div.innerHTML = `<strong>时效二维码（${room.name||room.id}）<br>${checkin.replace('T',' ')} ~ ${checkout.replace('T',' ')}</strong>`;
         const img = document.createElement('img');
         img.src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(url)}&rnd=${Math.random()}`;
-        img.width = 200;
-        img.height = 200;
+        img.width = 200; img.height = 200;
         img.onerror = () => { img.src = ''; div.innerHTML += '<p style="color:red;">二维码加载失败</p>'; };
         div.appendChild(img);
         const delBtn = document.createElement('button');
@@ -436,7 +438,6 @@
             if (item.querySelector('strong')?.innerText.includes(id)) {
                 const img = item.querySelector('img');
                 if (img && img.src) {
-                    // 通过 canvas 绘制图像以便下载（绕过跨域限制）
                     const canvas = document.createElement('canvas');
                     canvas.width = img.width;
                     canvas.height = img.height;
@@ -452,7 +453,6 @@
                         a.click();
                     };
                     image.onerror = () => {
-                        // 如果 canvas 跨域失败，直接打开图片新窗口
                         window.open(img.src, '_blank');
                     };
                 }
