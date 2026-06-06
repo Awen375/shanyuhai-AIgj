@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>山予海 · 前台端</title>
     <link rel="icon" type="image/png" href="/favicon.png">
-    <!-- 使用 CDN 加载二维码库 -->
     <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
     <style>
         body { font-family: 'PingFang SC','Microsoft YaHei',sans-serif; background: #f0f4f8; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
@@ -85,12 +84,10 @@
 <div id="qrModal" class="modal-overlay"><div class="modal-content" style="max-width:900px;width:95%;"><h3>所有房间二维码</h3><div id="qrContainer" style="display:flex;flex-wrap:wrap;justify-content:center;"></div><button onclick="document.getElementById('qrModal').style.display='none'">关闭</button></div></div>
 
 <script>
-    // 全局变量
     let dashboardData = null, currentRoom = null, takeoverRooms = [], alertTimer = null, chatActive = false;
     const PASSWORD = () => localStorage.getItem('front_password') || '';
     const BASE = '/api/frontdesk';
 
-    // 初始化隐藏
     document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('chatModal').classList.add('hidden');
         document.getElementById('dashboardPanel').classList.add('hidden');
@@ -117,10 +114,7 @@
     async function login() {
         const pass = document.getElementById('frontPass').value;
         const res = await fetch(BASE + '?password=' + encodeURIComponent(pass));
-        if (!res.ok) {
-            document.getElementById('loginMsg').innerText = '服务器错误或密码错误';
-            return;
-        }
+        if (!res.ok) { document.getElementById('loginMsg').innerText = '服务器错误或密码错误'; return; }
         const data = await res.json();
         if (data.valid) {
             localStorage.setItem('front_password', pass);
@@ -159,9 +153,16 @@
         else if (cur.room_msg === 0) stopAlert();
     }
 
+    // ★ 修改：点击“房客消息”直接打开接管房间对话框
     function openRoomMsgList() {
-        if (currentRoom) document.getElementById('chatModal').classList.remove('hidden');
-        else openNotifyList('room_msg');
+        // 先加载最新的接管房间列表，然后直接打开对话框
+        loadTakeoverRooms().then(() => {
+            document.getElementById('chatModal').classList.remove('hidden');
+            // 如果有接管房间，默认选中第一个
+            if (takeoverRooms.length > 0 && !currentRoom) {
+                openRoomChat(takeoverRooms[0].room);
+            }
+        });
     }
 
     async function loadTakeoverRooms() {
@@ -171,6 +172,7 @@
         takeoverRooms = data.rooms || [];
         renderRoomList();
         const now = new Date(), hour = now.getHours();
+        // 上班时间且有接管房间且未激活对话，自动弹出对话框
         if (takeoverRooms.length > 0 && !chatActive && hour >= 8 && hour < 23) {
             if (document.getElementById('chatModal').classList.contains('hidden')) {
                 currentRoom = takeoverRooms[0].room;
@@ -180,27 +182,39 @@
             }
         }
         if (currentRoom && !takeoverRooms.some(r => r.room === currentRoom)) {
-            currentRoom = null; document.getElementById('chatModal').classList.add('hidden'); chatActive = false;
+            currentRoom = null;
+            // 不自动隐藏对话框，由用户手动关闭
         }
     }
 
     function renderRoomList() {
-        document.getElementById('roomListContainer').innerHTML = takeoverRooms.map(r => `<div class="room-item ${currentRoom===r.room?'active':''}" onclick="openRoomChat('${r.room}')">${r.room} ${r.unread>0?`<span class="badge-room">${r.unread}</span>`:''}</div>`).join('');
+        document.getElementById('roomListContainer').innerHTML = takeoverRooms.map(r => `
+            <div class="room-item ${currentRoom===r.room?'active':''}" onclick="openRoomChat('${r.room}')">
+                ${r.room} ${r.unread>0 ? `<span class="badge-room">${r.unread}</span>` : ''}
+            </div>
+        `).join('');
     }
 
     async function openRoomChat(room) {
-        currentRoom = room; document.getElementById('currentRoomTitle').innerText = `房间 ${room}`;
-        renderRoomList(); document.getElementById('chatModal').classList.remove('hidden');
-        loadRoomMessages(room); chatActive = true; stopAlert();
+        currentRoom = room;
+        document.getElementById('currentRoomTitle').innerText = `房间 ${room}`;
+        renderRoomList();
+        document.getElementById('chatModal').classList.remove('hidden');
+        loadRoomMessages(room);
+        chatActive = true;
+        stopAlert();
     }
 
     async function loadRoomMessages(room) {
         const res = await fetch(`${BASE}?password=${encodeURIComponent(PASSWORD())}&action=chat_messages&room=${room}`);
         const data = await res.json();
         document.getElementById('chatMessages').innerHTML = data.messages.map(m => {
-            let cls = 'ai'; if (m.sender === 'guest') cls = 'guest'; else if (m.sender === 'frontdesk') cls = 'frontdesk';
+            let cls = 'ai';
+            if (m.sender === 'guest') cls = 'guest';
+            else if (m.sender === 'frontdesk') cls = 'frontdesk';
             return `<div class="msg ${cls}"><div class="bubble">${m.text}</div></div>`;
         }).join('');
+        document.getElementById('chatMessages').scrollTop = document.getElementById('chatMessages').scrollHeight;
     }
 
     async function sendMsg() {
@@ -214,7 +228,9 @@
     async function endTakeover() {
         if (!currentRoom) return;
         await fetch(`${BASE}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ password: PASSWORD(), action: 'end_takeover', room: currentRoom }) });
-        document.getElementById('chatModal').classList.add('hidden'); currentRoom = null; chatActive = false;
+        document.getElementById('chatModal').classList.add('hidden');
+        currentRoom = null;
+        chatActive = false;
         loadTakeoverRooms();
     }
 
@@ -269,32 +285,61 @@
     }
     function getTypeName(t) { const m = { usage:'今日使用', room_msg:'房客消息', clean:'清扫任务', car:'用车服务', food:'订餐服务', extend:'续住需求' }; return m[t]||''; }
 
-    // 二维码生成
+    // ===== 二维码生成 =====
     async function showAllRoomsQR() {
         const res = await fetch(`${BASE}?password=${encodeURIComponent(PASSWORD())}&action=rooms`);
         const data = await res.json();
-        if (!data.rooms) return alert('获取失败');
+        if (!data.rooms) return alert('获取房间列表失败');
         const container = document.getElementById('qrContainer');
         container.innerHTML = '';
-        const logo = new Image(); logo.src = '/logo.jpg';
-        logo.onload = () => {
-            data.rooms.forEach(room => {
-                const url = `${location.origin}/room-chat.html?room=${room.id}&token=${room.token}`;
-                const canvas = document.createElement('canvas'); canvas.width = 300; canvas.height = 300;
-                QRCode.toCanvas(canvas, url, { width: 300, margin: 1, errorCorrectionLevel: 'H' }, () => {
-                    const ctx = canvas.getContext('2d');
-                    const s = 70, x = (300-s)/2, y = (300-s)/2;
-                    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(150,150,s/2+4,0,2*Math.PI); ctx.fill();
-                    ctx.drawImage(logo, x, y, s, s);
-                });
-                const div = document.createElement('div'); div.className = 'qr-room-item';
-                div.innerHTML = `<strong>${room.name||room.id}</strong>`;
-                div.appendChild(canvas);
-                div.innerHTML += `<div class="qr-btns"><button class="success" onclick="saveQR('${room.id}')">💾保存</button><button class="warning" onclick="refreshRoomQR('${room.id}')">🔄刷新</button></div>`;
-                container.appendChild(div);
-            });
+        // 预加载 logo，确保绘制
+        const logo = new Image();
+        logo.crossOrigin = 'anonymous';
+        logo.src = '/logo.jpg';
+        logo.onerror = () => {
+            // 如果 logo 加载失败，仍然生成不带 logo 的二维码
+            data.rooms.forEach(room => generateQR(room, null));
         };
+        logo.onload = () => {
+            data.rooms.forEach(room => generateQR(room, logo));
+        };
+        // 超时处理（如果 logo 一直未加载）
+        setTimeout(() => {
+            if (logo.complete && logo.naturalWidth === 0) {
+                data.rooms.forEach(room => generateQR(room, null));
+            }
+        }, 3000);
+
         document.getElementById('qrModal').style.display = 'flex';
+    }
+
+    function generateQR(room, logo) {
+        const url = `${location.origin}/room-chat.html?room=${room.id}&token=${room.token}`;
+        const canvas = document.createElement('canvas');
+        canvas.width = 300; canvas.height = 300;
+        QRCode.toCanvas(canvas, url, { width: 300, margin: 1, errorCorrectionLevel: 'H' }, (error) => {
+            if (error) {
+                console.error('二维码生成失败', error);
+                return;
+            }
+            const ctx = canvas.getContext('2d');
+            if (logo) {
+                const size = 70;
+                const x = (canvas.width - size) / 2;
+                const y = (canvas.height - size) / 2;
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.arc(canvas.width/2, canvas.height/2, size/2 + 4, 0, 2 * Math.PI);
+                ctx.fill();
+                ctx.drawImage(logo, x, y, size, size);
+            }
+            const div = document.createElement('div');
+            div.className = 'qr-room-item';
+            div.innerHTML = `<strong>${room.name || room.id}</strong>`;
+            div.appendChild(canvas);
+            div.innerHTML += `<div class="qr-btns"><button class="success" onclick="saveQR('${room.id}')">💾保存</button><button class="warning" onclick="refreshRoomQR('${room.id}')">🔄刷新</button></div>`;
+            document.getElementById('qrContainer').appendChild(div);
+        });
     }
 
     function saveQR(id) {
@@ -302,7 +347,12 @@
         for (let item of items) {
             if (item.querySelector('strong')?.innerText.includes(id)) {
                 const canvas = item.querySelector('canvas');
-                if (canvas) { const a = document.createElement('a'); a.download = `房间${id}.png`; a.href = canvas.toDataURL(); a.click(); }
+                if (canvas) {
+                    const a = document.createElement('a');
+                    a.download = `房间${id}.png`;
+                    a.href = canvas.toDataURL();
+                    a.click();
+                }
                 break;
             }
         }
@@ -312,11 +362,30 @@
         if (!confirm('刷新后旧二维码将失效，确定继续吗？')) return;
         const res = await fetch(`${BASE}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ password: PASSWORD(), action: 'refresh_room', id }) });
         const data = await res.json();
-        if (data.success) { alert('二维码已刷新！'); showAllRoomsQR(); } else alert('刷新失败：' + (data.error || '未知错误'));
+        if (data.success) {
+            alert('二维码已刷新！');
+            showAllRoomsQR();
+        } else {
+            alert('刷新失败：' + (data.error || '未知错误'));
+        }
     }
 
-    function startTakeoverCheck() { setInterval(() => { if (!document.getElementById('dashboardPanel').classList.contains('hidden')) { loadTakeoverRooms(); if (currentRoom) loadRoomMessages(currentRoom); } }, 5000); }
-    function startAutoRefresh() { setInterval(async () => { if (document.getElementById('dashboardPanel').classList.contains('hidden')) return; const r = await fetch(BASE + '?password=' + encodeURIComponent(PASSWORD())); dashboardData = await r.json(); updateDashboard(); }, 30000); }
+    function startTakeoverCheck() {
+        setInterval(() => {
+            if (!document.getElementById('dashboardPanel').classList.contains('hidden')) {
+                loadTakeoverRooms();
+                if (currentRoom) loadRoomMessages(currentRoom);
+            }
+        }, 5000);
+    }
+    function startAutoRefresh() {
+        setInterval(async () => {
+            if (document.getElementById('dashboardPanel').classList.contains('hidden')) return;
+            const r = await fetch(BASE + '?password=' + encodeURIComponent(PASSWORD()));
+            dashboardData = await r.json();
+            updateDashboard();
+        }, 30000);
+    }
     window.addEventListener('beforeunload', stopAlert);
 </script>
 </body>
