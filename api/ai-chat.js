@@ -111,17 +111,19 @@ export default async function handler(req, res) {
     try {
         const aiSettings = await getAISettings();
 
-        // 接管状态检查（接管仍按 room 进行，不做 groupId 隔离）
+        // 接管状态检查（接管基于 room，但接管时会记录 groupId）
         const takeoverData = await redis.get(`takeover:${room}`);
         const isTakeover = takeoverData && (typeof takeoverData === 'object' ? takeoverData.active : JSON.parse(takeoverData).active);
 
         if (isTakeover) {
+            // 客人处于接管中，消息存入 pending_msg，不经过 AI
             await redis.set(`pending_msg:${room}:${Date.now()}`, JSON.stringify({
-                room, sender: 'guest', text: question, time: new Date().toISOString()
+                room, sender: 'guest', text: question, time: new Date().toISOString(), groupId: groupId || ''
             }));
             return res.status(200).json({ reply: '' });
         }
 
+        // 正常 AI 处理
         const knowledgeKeys = await redis.keys('knowledge:*');
         let knowledgeText = '';
         for (const key of knowledgeKeys) {
@@ -179,16 +181,17 @@ ${knowledgeText || '暂无'}`;
         if (matched && matched.type === 'room_msg') {
             const online = await isFrontdeskOnline();
             console.log('前台在线状态:', online);
+            // 下班时间 (23:00 - 8:00) 且前台不在线
             if (hour >= 23 || hour < 8) {
                 if (online) {
                     await redis.set(`notification:${Date.now()}`, JSON.stringify({
                         room: room || '未知', question, reply: '', keyword: matched.keyword,
-                        type: 'room_msg', time: new Date().toISOString(), status: 'pending'
+                        type: 'room_msg', time: new Date().toISOString(), status: 'pending', groupId: groupId || ''
                     }));
                     await redis.set(`takeover:${room}`, JSON.stringify({
-                        active: true, startTime: Date.now(), lastGuestMsg: Date.now()
+                        active: true, startTime: Date.now(), lastGuestMsg: Date.now(), groupId: groupId || ''
                     }));
-                    console.log(`接管房间已设置: takeover:${room}`);
+                    console.log(`接管房间已设置: takeover:${room}，群组：${groupId || '无'}`);
                     return res.status(200).json({ reply: '正在通知前台的小伙伴，接通中请稍等...' });
                 } else {
                     return res.status(200).json({ reply: '我们前台的小伙伴们都下班啦！目前是下班时间，有什么问题您可以先问我我可以帮您处理的。上班时间：8:00-23:00' });
@@ -197,12 +200,12 @@ ${knowledgeText || '暂无'}`;
                 if (online) {
                     await redis.set(`notification:${Date.now()}`, JSON.stringify({
                         room: room || '未知', question, reply: '', keyword: matched.keyword,
-                        type: 'room_msg', time: new Date().toISOString(), status: 'pending'
+                        type: 'room_msg', time: new Date().toISOString(), status: 'pending', groupId: groupId || ''
                     }));
                     await redis.set(`takeover:${room}`, JSON.stringify({
-                        active: true, startTime: Date.now(), lastGuestMsg: Date.now()
+                        active: true, startTime: Date.now(), lastGuestMsg: Date.now(), groupId: groupId || ''
                     }));
-                    console.log(`接管房间已设置: takeover:${room}`);
+                    console.log(`接管房间已设置: takeover:${room}，群组：${groupId || '无'}`);
                     return res.status(200).json({ reply: '正在通知前台的小伙伴，接通中请稍等...' });
                 } else {
                     return res.status(200).json({ reply: '目前前台小伙伴不在线，您可以先留言，我们稍后回复您。' });
@@ -255,7 +258,7 @@ ${knowledgeText || '暂无'}`;
             if (aiSettings.fallbackNote) reply += '\n' + aiSettings.fallbackNote;
         }
 
-        // 存储聊天记录，加入 groupId
+        // 存储聊天记录，包含 groupId
         const chatKey = `chat:${Date.now()}:${Math.random().toString(36).substr(2,6)}`;
         await redis.set(chatKey, JSON.stringify({
             room: room || '未知',
