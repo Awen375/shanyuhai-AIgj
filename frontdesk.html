@@ -91,6 +91,16 @@
     </div>
 </div>
 
+<!-- 普通通知弹窗（清扫、用车等） -->
+<div id="listModal" class="modal-overlay">
+    <div class="modal-content">
+        <h4 id="listTitle"></h4>
+        <button id="historyBtn" onclick="showHistory()" style="margin-bottom:10px; background:#3498db;">处理记录</button>
+        <table id="notifTable"><tbody></tbody></table>
+        <button onclick="document.getElementById('listModal').style.display='none'">关闭</button>
+    </div>
+</div>
+
 <!-- 对话框弹窗（默认隐藏） -->
 <div id="chatModal" class="chat-modal hidden">
     <div class="room-list" id="roomListContainer"></div>
@@ -111,6 +121,9 @@
     let dashboardData = null;
     let currentRoom = null;
     let takeoverRooms = [];
+    let alertTimer = null;        // 语音定时器
+    let alertSpeakCount = 0;
+    let chatActive = false;       // 是否已激活对话
     const PASSWORD = () => localStorage.getItem('front_password') || '';
     const BASE = '/api/frontdesk';
 
@@ -121,6 +134,28 @@
             utter.rate = 1.0;
             speechSynthesis.speak(utter);
         }
+    }
+
+    function stopAlert() {
+        if (alertTimer) { clearInterval(alertTimer); alertTimer = null; }
+        alertSpeakCount = 0;
+    }
+
+    function startAlert() {
+        stopAlert();
+        const doSpeak = () => {
+            for (let i = 0; i < 3; i++) {
+                setTimeout(() => speak('您有一条房客信息，请立即回复'), i * 1000);
+            }
+        };
+        doSpeak();
+        alertTimer = setInterval(() => {
+            if (chatActive || currentRoom) {
+                stopAlert();
+                return;
+            }
+            doSpeak();
+        }, 30000);
     }
 
     async function login() {
@@ -158,28 +193,45 @@
         document.getElementById('cnt_car').innerText = current.car;
         document.getElementById('cnt_food').innerText = current.food;
         document.getElementById('cnt_extend').innerText = current.extend;
-        // 语音播报
-        if (!skipVoice && current.room_msg > 0) {
-            speak('您有一条房客信息，请立即回复');
+
+        const now = new Date();
+        const hour = now.getHours();
+        if (current.room_msg > 0 && !chatActive && hour >= 8 && hour < 23) {
+            if (!alertTimer) startAlert();
+        } else if (current.room_msg === 0) {
+            stopAlert();
         }
     }
 
-    // 接管房间相关
+    function openRoomMsgList() {
+        if (currentRoom) {
+            document.getElementById('chatModal').classList.remove('hidden');
+        } else {
+            openNotifyList('room_msg');
+        }
+    }
+
+    // ===== 接管房间相关 =====
     async function loadTakeoverRooms() {
         const res = await fetch(`${BASE}/chat?password=${encodeURIComponent(PASSWORD())}&action=rooms`);
         const data = await res.json();
         takeoverRooms = data.rooms || [];
         renderRoomList();
-        // 如果有新接管房间且对话框未打开，自动打开第一个
-        if (takeoverRooms.length > 0 && document.getElementById('chatModal').classList.contains('hidden')) {
-            currentRoom = takeoverRooms[0].room;
-            document.getElementById('chatModal').classList.remove('hidden');
-            loadRoomMessages(currentRoom);
+        const now = new Date();
+        const hour = now.getHours();
+        if (takeoverRooms.length > 0 && !chatActive && hour >= 8 && hour < 23) {
+            if (document.getElementById('chatModal').classList.contains('hidden')) {
+                currentRoom = takeoverRooms[0].room;
+                document.getElementById('chatModal').classList.remove('hidden');
+                loadRoomMessages(currentRoom);
+                chatActive = true;
+                stopAlert();
+            }
         }
-        // 如果当前房间已结束接管，关闭对话框
         if (currentRoom && !takeoverRooms.some(r => r.room === currentRoom)) {
             currentRoom = null;
             document.getElementById('chatModal').classList.add('hidden');
+            chatActive = false;
         }
     }
 
@@ -198,6 +250,8 @@
         renderRoomList();
         document.getElementById('chatModal').classList.remove('hidden');
         loadRoomMessages(room);
+        chatActive = true;
+        stopAlert();
     }
 
     async function loadRoomMessages(room) {
@@ -234,10 +288,103 @@
         });
         document.getElementById('chatModal').classList.add('hidden');
         currentRoom = null;
+        chatActive = false;
         loadTakeoverRooms();
     }
 
-    // 定期刷新
+    // ===== 普通通知（清扫、用车等） =====
+    async function openNotifyList(type) {
+        document.getElementById('listTitle').innerText = getTypeName(type) + ' 待处理列表';
+        document.getElementById('historyBtn').style.display = 'inline-block';
+        await loadNotifications(type);
+        document.getElementById('listModal').style.display = 'flex';
+    }
+
+    async function loadNotifications(type) {
+        const pass = PASSWORD();
+        const res = await fetch(`${BASE}/notifications?password=${encodeURIComponent(pass)}&type=${type}`);
+        const data = await res.json();
+        const tbody = document.querySelector('#notifTable tbody');
+        tbody.innerHTML = '';
+        if (data.notifications && data.notifications.length) {
+            data.notifications.forEach(n => {
+                tbody.innerHTML += `<tr>
+                    <td>${n.room}</td>
+                    <td>${n.question}</td>
+                    <td><button onclick="handleNotif('${n.id}')" class="success">处理完成</button></td>
+                </tr>`;
+            });
+        } else {
+            tbody.innerHTML = '<tr><td colspan="3">暂无数据</td></tr>';
+        }
+    }
+
+    async function handleNotif(id) {
+        const pass = PASSWORD();
+        await fetch(`${BASE}/notifications`, {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ id, password: pass })
+        });
+        // 重新加载当前类型列表
+        const title = document.getElementById('listTitle').innerText;
+        const typeMap = { '清扫任务':'clean', '用车服务':'car', '订餐服务':'food', '续住需求':'extend' };
+        const typeKey = Object.entries(typeMap).find(([k,v]) => title.includes(k))?.[1];
+        if (typeKey) {
+            await loadNotifications(typeKey);
+            const res = await fetch(BASE + '?password=' + encodeURIComponent(pass));
+            dashboardData = await res.json();
+            updateDashboard();
+        }
+    }
+
+    async function showHistory() {
+        const pass = PASSWORD();
+        const title = document.getElementById('listTitle').innerText;
+        const typeMap = { '清扫任务':'clean', '用车服务':'car', '订餐服务':'food', '续住需求':'extend' };
+        const typeKey = Object.entries(typeMap).find(([k,v]) => title.includes(k))?.[1];
+        if (!typeKey) return;
+        const res = await fetch(`${BASE}/notifications?password=${encodeURIComponent(pass)}&type=${typeKey}&history=1`);
+        const data = await res.json();
+        const tbody = document.querySelector('#notifTable tbody');
+        tbody.innerHTML = '';
+        if (data.history && data.history.length) {
+            data.history.forEach(n => {
+                tbody.innerHTML += `<tr>
+                    <td>${n.room}</td>
+                    <td>${n.question}</td>
+                    <td>${new Date(n.resolvedAt).toLocaleString()}</td>
+                </tr>`;
+            });
+        } else {
+            tbody.innerHTML = '<tr><td colspan="3">暂无处理记录</td></tr>';
+        }
+    }
+
+    function openTodayStats() {
+        // 实现今日处理统计弹窗（可复用之前的逻辑）
+        alert('今日处理统计功能待完善');
+    }
+
+    function openUsageList() {
+        const rooms = dashboardData?.todayRooms || [];
+        document.getElementById('listTitle').innerText = '今日使用房间';
+        document.getElementById('historyBtn').style.display = 'none';
+        const tbody = document.querySelector('#notifTable tbody');
+        tbody.innerHTML = '';
+        if (rooms.length > 0) {
+            rooms.forEach(room => { tbody.innerHTML += `<tr><td>${room}</td></tr>`; });
+        } else {
+            tbody.innerHTML = '<tr><td>暂无房间使用</td></tr>';
+        }
+        document.getElementById('listModal').style.display = 'flex';
+    }
+
+    function getTypeName(type) {
+        const map = { usage:'今日使用', room_msg:'房客消息', clean:'清扫任务', car:'用车服务', food:'订餐服务', extend:'续住需求' };
+        return map[type] || '';
+    }
+
     function startTakeoverCheck() {
         setInterval(() => {
             if (!document.getElementById('dashboardPanel').classList.contains('hidden')) {
@@ -245,17 +392,17 @@
                 if (currentRoom) loadRoomMessages(currentRoom);
             }
         }, 5000);
-        // 语音提醒循环
-        setInterval(() => {
-            if (takeoverRooms.length > 0) {
-                speak('您有一条房客信息，请立即回复');
-            }
-        }, 10000);
     }
 
-    // 保留原有的其它功能（使用房间、通知列表、历史记录等）
-    // ... 由于篇幅，此处省略部分重复代码，实际部署请确保包含之前的所有功能函数
-    // 这些函数在前面的回答中已有完整版本，请结合使用
+    function startAutoRefresh() {
+        setInterval(async () => {
+            if (document.getElementById('dashboardPanel').classList.contains('hidden')) return;
+            const pass = PASSWORD();
+            const res = await fetch(BASE + '?password=' + encodeURIComponent(pass));
+            dashboardData = await res.json();
+            updateDashboard();
+        }, 30000);
+    }
 </script>
 </body>
 </html>
