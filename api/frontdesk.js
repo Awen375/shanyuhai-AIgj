@@ -19,6 +19,13 @@ export default async function handler(req, res) {
         action = url.searchParams.get('action') || 'main';
     }
 
+    // 心跳接口无需密码验证（或者可以简单验证）
+    if (action === 'heartbeat') {
+        // 记录心跳，设置过期时间60秒（前台端每30秒发送一次，保证在线）
+        await redis.set('heartbeat:frontdesk', '1', { ex: 60 });
+        return res.status(200).json({ success: true });
+    }
+
     const password = req.method === 'GET' ? url.searchParams.get('password') : (req.body?.password || '');
     if (!password || !(await checkPassword(password))) {
         return res.status(403).json({ error: '密码错误' });
@@ -51,7 +58,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ valid: true, todayRooms: Array.from(rooms), notifications });
         }
 
-        // 通知列表
+        // 通知列表（按类型）
         if (action === 'notifications' && req.method === 'GET') {
             const type = url.searchParams.get('type');
             const history = url.searchParams.get('history');
