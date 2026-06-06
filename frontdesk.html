@@ -40,7 +40,6 @@
         .chat-header { padding: 15px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
         .messages { flex: 1; overflow-y: auto; padding: 15px; }
         .msg { margin-bottom: 10px; }
-        /* 互换位置：客人消息左对齐，前台消息右对齐 */
         .msg.guest { text-align: left; }
         .msg.frontdesk { text-align: right; }
         .msg.ai { text-align: left; }
@@ -57,7 +56,6 @@
         .time-input { margin: 10px 0; }
         .time-input label { font-size: 14px; margin-right: 5px; }
         .time-input input { padding: 8px; border-radius: 10px; border: 1px solid #ddd; }
-        /* 历史记录模态框 */
         .history-modal .messages { max-height: 400px; overflow-y: auto; }
     </style>
 </head>
@@ -72,7 +70,7 @@
     </div>
 
     <div id="dashboardPanel" class="dashboard hidden">
-        <button class="btn-qr" onclick="showAllRoomsQR()">📱 客房二维码</button>
+        <button class="btn-qr" onclick="showAllTempQRs()">📱 临时二维码</button>
         <div class="logo">🌊</div>
         <h2>山予海AI管家前台端</h2>
         <div class="card-row">
@@ -108,10 +106,12 @@
         </div>
     </div>
 </div>
+
+<!-- 二维码弹窗（只显示临时二维码） -->
 <div id="qrModal" class="modal-overlay"><div class="modal-content" style="max-width:900px;width:95%;">
-    <h3>所有房间二维码</h3>
+    <h3>临时二维码</h3>
     <div style="margin-bottom:20px;">
-        <button onclick="showAllRoomsQR()">🔄 刷新列表</button>
+        <button onclick="showAllTempQRs()">🔄 刷新列表</button>
         <button onclick="showTimeQRForm()" class="success">⏰ 生成时效二维码</button>
     </div>
     <div id="qrContainer" style="display:flex;flex-wrap:wrap;justify-content:center;"></div>
@@ -137,7 +137,7 @@
 </div></div>
 
 <!-- 历史聊天弹窗 -->
-<div id="historyChatModal" class="modal-overlay">
+<div id="historyChatModal" class="modal-overlay" style="z-index:1001;">
     <div class="modal-content" style="max-width:600px; max-height:80vh;">
         <h3>历史聊天记录 - <span id="historyRoomTitle"></span></h3>
         <div class="messages" id="historyChatMessages" style="max-height: 60vh; overflow-y: auto;"></div>
@@ -146,7 +146,7 @@
 </div>
 
 <!-- 快捷回复管理弹窗 -->
-<div id="quickReplyModal" class="modal-overlay">
+<div id="quickReplyModal" class="modal-overlay" style="z-index:1001;">
     <div class="modal-content">
         <h3>⚡ 快捷回复设置</h3>
         <div id="quickReplyList"></div>
@@ -175,7 +175,6 @@
         if (alertTimer) clearInterval(alertTimer);
     });
 
-    // ===== 语音相关 =====
     function speak(text) {
         if ('speechSynthesis' in window) {
             const utter = new SpeechSynthesisUtterance(text); utter.lang = 'zh-CN'; utter.rate = 1.0;
@@ -319,7 +318,6 @@
         document.getElementById('chatMessages').scrollTop = document.getElementById('chatMessages').scrollHeight;
     }
 
-    // 发送消息
     async function sendMsg() {
         const text = document.getElementById('chatInput').value.trim();
         if (!text || !currentRoom) { alert('请选择左侧已触发的客房'); return; }
@@ -458,33 +456,50 @@
     }
     function getTypeName(t) { const m = { usage:'今日使用', room_msg:'房客消息', clean:'清扫任务', car:'用车服务', food:'订餐服务', extend:'续住需求' }; return m[t]||''; }
 
-    // ===== 二维码管理 =====
-    async function showAllRoomsQR() {
-        const res = await fetch(`${BASE}?password=${encodeURIComponent(PASSWORD())}&action=rooms`);
+    // ===== 临时二维码管理（只显示临时二维码） =====
+    async function showAllTempQRs() {
+        const res = await fetch(`${BASE}?password=${encodeURIComponent(PASSWORD())}&action=temp_qrs`);
         const data = await res.json();
-        if (!data.rooms) return alert('获取房间列表失败');
         const container = document.getElementById('qrContainer');
         container.innerHTML = '';
-        data.rooms.forEach(room => generateQR(room));
+        if (data.qrs && data.qrs.length > 0) {
+            data.qrs.forEach(qr => {
+                renderTempQR(qr);
+            });
+        } else {
+            container.innerHTML = '<p>暂无临时二维码，点击“生成时效二维码”创建</p>';
+        }
         document.getElementById('qrModal').style.display = 'flex';
     }
 
-    function generateQR(room) {
-        const url = `${location.origin}/room-chat.html?room=${room.id}&token=${room.token}`;
-        const existing = document.querySelector(`.qr-room-item[data-room="${room.id}"]`);
-        if (existing) existing.remove();
-
+    function renderTempQR(qr) {
+        const url = `${location.origin}/room-chat.html?room=${qr.roomId}&token=${qr.token}&checkin=${qr.checkin}&checkout=${qr.checkout}&groupId=${encodeURIComponent(qr.groupId)}`;
         const div = document.createElement('div');
         div.className = 'qr-room-item';
-        div.setAttribute('data-room', room.id);
-        div.innerHTML = `<strong>${room.name||room.id}</strong>`;
+        div.setAttribute('data-groupid', qr.groupId);
+        div.innerHTML = `<strong>${qr.roomName||qr.roomId} ${qr.checkinText} ~ ${qr.checkoutText}</strong>`;
         const img = document.createElement('img');
         img.src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(url)}&rnd=${Math.random()}`;
         img.width = 200; img.height = 200;
         img.onerror = () => { img.src = ''; div.innerHTML += '<p style="color:red;">二维码加载失败</p>'; };
         div.appendChild(img);
-        div.innerHTML += `<div class="qr-btns"><button class="success" onclick="saveQR('${room.id}')">💾保存</button><button class="warning" onclick="refreshRoomQR('${room.id}')">🔄刷新</button></div>`;
+        const delBtn = document.createElement('button');
+        delBtn.className = 'delete-btn';
+        delBtn.innerHTML = '×';
+        delBtn.title = '删除此二维码（将停用）';
+        delBtn.onclick = () => deleteTempQR(qr.groupId);
+        div.appendChild(delBtn);
         document.getElementById('qrContainer').appendChild(div);
+    }
+
+    async function deleteTempQR(groupId) {
+        if (!confirm('删除后该二维码将立即失效，确定吗？')) return;
+        await fetch(`${BASE}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: PASSWORD(), action: 'delete_temp_qr', groupId })
+        });
+        showAllTempQRs();
     }
 
     function showTimeQRForm() {
@@ -507,60 +522,27 @@
         const checkinStr = formatTime(checkin);
         const checkoutStr = formatTime(checkout);
 
-        const groupId = `${Date.now()}-${Math.random().toString(36).substr(2,8)}`;
-
-        const url = `${location.origin}/room-chat.html?room=${room.id}&token=${room.token}&checkin=${checkinStr}&checkout=${checkoutStr}&groupId=${encodeURIComponent(groupId)}`;
-        const div = document.createElement('div');
-        div.className = 'qr-room-item';
-        div.innerHTML = `<strong>时效二维码（${room.name||room.id}）<br>${checkin.replace('T',' ')} ~ ${checkout.replace('T',' ')}</strong>`;
-        const img = document.createElement('img');
-        img.src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(url)}&rnd=${Math.random()}`;
-        img.width = 200; img.height = 200;
-        img.onerror = () => { img.src = ''; div.innerHTML += '<p style="color:red;">二维码加载失败</p>'; };
-        div.appendChild(img);
-        const delBtn = document.createElement('button');
-        delBtn.className = 'delete-btn';
-        delBtn.innerHTML = '×';
-        delBtn.title = '删除此二维码';
-        delBtn.onclick = function() { div.remove(); };
-        div.appendChild(delBtn);
-        document.getElementById('timeQRResult').appendChild(div);
-    }
-
-    function saveQR(id) {
-        const items = document.querySelectorAll('.qr-room-item');
-        for (let item of items) {
-            if (item.querySelector('strong')?.innerText.includes(id)) {
-                const img = item.querySelector('img');
-                if (img && img.src) {
-                    const canvas = document.createElement('canvas');
-                    canvas.width = img.width;
-                    canvas.height = img.height;
-                    const ctx = canvas.getContext('2d');
-                    const image = new Image();
-                    image.crossOrigin = 'Anonymous';
-                    image.src = img.src;
-                    image.onload = () => {
-                        ctx.drawImage(image, 0, 0);
-                        const a = document.createElement('a');
-                        a.download = `房间${id}.png`;
-                        a.href = canvas.toDataURL();
-                        a.click();
-                    };
-                    image.onerror = () => {
-                        window.open(img.src, '_blank');
-                    };
-                }
-                break;
-            }
-        }
-    }
-
-    async function refreshRoomQR(id) {
-        if (!confirm('刷新后旧二维码将失效，确定继续吗？')) return;
-        const res = await fetch(`${BASE}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ password: PASSWORD(), action: 'refresh_room', id }) });
+        // 调用后端创建临时二维码
+        const res = await fetch(`${BASE}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                password: PASSWORD(),
+                action: 'create_temp_qr',
+                roomId,
+                roomName: room.name || roomId,
+                token: room.token,
+                checkin: checkinStr,
+                checkout: checkoutStr
+            })
+        });
         const data = await res.json();
-        if (data.success) { alert('二维码已刷新！'); showAllRoomsQR(); } else alert('刷新失败：' + (data.error || '未知错误'));
+        if (data.success) {
+            document.getElementById('timeQRForm').style.display = 'none';
+            showAllTempQRs();
+        } else {
+            alert('创建失败：' + (data.error || '未知错误'));
+        }
     }
 
     function startTakeoverCheck() {
