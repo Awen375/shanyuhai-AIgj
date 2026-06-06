@@ -87,7 +87,6 @@ async function matchKeywords(text) {
     let matchedOther = null;
     for (const item of list) {
         if (text.includes(item.keyword)) {
-            // ★ 确保 room_msg 类型被优先返回
             if (item.type === 'room_msg') return item;
             if (item.type === 'other') {
                 matchedOther = item;
@@ -112,7 +111,6 @@ export default async function handler(req, res) {
     try {
         const aiSettings = await getAISettings();
 
-        // 接管状态检查
         const takeoverData = await redis.get(`takeover:${room}`);
         const isTakeover = takeoverData && (typeof takeoverData === 'object' ? takeoverData.active : JSON.parse(takeoverData).active);
 
@@ -123,7 +121,6 @@ export default async function handler(req, res) {
             return res.status(200).json({ reply: '' });
         }
 
-        // 正常 AI 处理
         const knowledgeKeys = await redis.keys('knowledge:*');
         let knowledgeText = '';
         for (const key of knowledgeKeys) {
@@ -175,15 +172,12 @@ ${hotelInfo}
 【补充知识库】
 ${knowledgeText || '暂无'}`;
 
-        // 关键词匹配
         const matched = await matchKeywords(question);
         console.log('关键词匹配结果:', JSON.stringify(matched));
 
-        // ★ 处理“房客消息”类型（新增在线状态检测）
         if (matched && matched.type === 'room_msg') {
             const online = await isFrontdeskOnline();
             console.log('前台在线状态:', online);
-            // 下班时间 (23:00 - 8:00) 且前台不在线
             if (hour >= 23 || hour < 8) {
                 if (online) {
                     await redis.set(`notification:${Date.now()}`, JSON.stringify({
@@ -199,7 +193,6 @@ ${knowledgeText || '暂无'}`;
                     return res.status(200).json({ reply: '我们前台的小伙伴们都下班啦！目前是下班时间，有什么问题您可以先问我我可以帮您处理的。上班时间：8:00-23:00' });
                 }
             } else {
-                // 上班时间
                 if (online) {
                     await redis.set(`notification:${Date.now()}`, JSON.stringify({
                         room: room || '未知', question, reply: '', keyword: matched.keyword,
@@ -216,7 +209,6 @@ ${knowledgeText || '暂无'}`;
             }
         }
 
-        // 其他类型关键词的回复扩展
         if (matched && matched.reply) {
             let replyBody = matched.reply;
             let instruction = '';
@@ -229,7 +221,6 @@ ${knowledgeText || '暂无'}`;
             if (instruction) systemPrompt += `\n【回复指示】请严格遵循以下要求来调整回复的语气、风格或内容：${instruction}`;
         }
 
-        // 调用火山方舟 V3.2
         const response = await fetch('https://ark.cn-beijing.volces.com/api/v3/chat/completions', {
             method: 'POST',
             headers: {
@@ -253,23 +244,20 @@ ${knowledgeText || '暂无'}`;
         if (!content) return res.status(500).json({ error: 'AI无返回' });
         let reply = content;
 
-        // 记录未回答问题
         const unsurePhrases = ['不太确定', '无法回答', '这个我不太清楚', '抱歉，我暂时无法',
             '建议您拨打前台', '您可以咨询前台', '暂时无法提供', '我也不太了解'];
         if (unsurePhrases.some(phrase => reply.includes(phrase))) {
             await redis.set(`unanswered:${Date.now()}`, JSON.stringify({
                 question, room: room || '', time: new Date().toISOString(), status: 'pending'
             }));
-            reply = aiSettings.fallbackReply.replace('{name}', aiSettings.name).replace('{phone}', '138xxxx1234').replace('{room}', room || '');
+            reply = aiSettings.fallbackReply.replace('{name}', aiSettings.name).replace('{phone}', '0593-8850999').replace('{room}', room || '');
             if (aiSettings.fallbackNote) reply += '\n' + aiSettings.fallbackNote;
         }
 
-        // 存储聊天记录
         const chatKey = `chat:${Date.now()}:${Math.random().toString(36).substr(2,6)}`;
         await redis.set(chatKey, JSON.stringify({ room: room || '未知', question, reply, time: new Date().toISOString() }));
         await redis.expire(chatKey, 60 * 60 * 24 * 90);
 
-        // 创建通知（排除 'other' 和 'room_msg' 类型）
         if (matched && matched.type !== 'other' && matched.type !== 'room_msg') {
             await redis.set(`notification:${Date.now()}`, JSON.stringify({
                 room: room || '未知',
