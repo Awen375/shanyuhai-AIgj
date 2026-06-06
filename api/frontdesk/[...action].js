@@ -11,15 +11,13 @@ async function checkPassword(password) {
 }
 
 export default async function handler(req, res) {
-    // 解析路径，兼容 /api/frontdesk 和 /api/frontdesk/xxx 等
-    const path = req.url.split('?')[0];
-    let action = path.replace('/api/frontdesk', '');
-    if (action.startsWith('/')) action = action.substring(1);
-    if (!action) action = 'main';
+    // 解析 action，确保能匹配 /api/frontdesk?password=...
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    let action = url.pathname.replace('/api/frontdesk', '').replace(/^\//, '');
+    if (!action) action = 'main';   // 空路径默认 main
 
     // 获取密码
-    const urlParams = new URLSearchParams(req.url.split('?')[1] || '');
-    const password = req.method === 'GET' ? urlParams.get('password') : (req.body?.password || '');
+    const password = req.method === 'GET' ? url.searchParams.get('password') : (req.body?.password || '');
     if (!password || !(await checkPassword(password))) {
         return res.status(403).json({ error: '密码错误' });
     }
@@ -51,10 +49,10 @@ export default async function handler(req, res) {
             return res.status(200).json({ valid: true, todayRooms: Array.from(rooms), notifications });
         }
 
-        // 通知列表
+        // 通知列表（按类型）
         if (action === 'notifications' && req.method === 'GET') {
-            const type = urlParams.get('type');
-            const history = urlParams.get('history');
+            const type = url.searchParams.get('type');
+            const history = url.searchParams.get('history');
             const keys = await redis.keys('notification:*');
             const items = [];
             for (const key of keys) {
@@ -85,7 +83,7 @@ export default async function handler(req, res) {
         }
 
         // 接管房间列表
-        if (action === 'chat' && req.method === 'GET' && urlParams.get('action') === 'rooms') {
+        if (action === 'chat' && req.method === 'GET' && url.searchParams.get('action') === 'rooms') {
             const keys = await redis.keys('takeover:*');
             const rooms = [];
             for (const key of keys) {
@@ -102,9 +100,9 @@ export default async function handler(req, res) {
             return res.status(200).json({ rooms });
         }
 
-        // 聊天记录
-        if (action === 'chat' && req.method === 'GET' && urlParams.get('room')) {
-            const room = urlParams.get('room');
+        // 房间聊天记录
+        if (action === 'chat' && req.method === 'GET' && url.searchParams.get('room')) {
+            const room = url.searchParams.get('room');
             const chatKeys = await redis.keys('chat:*');
             const messages = [];
             for (const key of chatKeys) {
