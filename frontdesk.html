@@ -24,7 +24,7 @@
         button { padding: 10px 20px; background: #1e90ff; color: white; border: none; border-radius: 25px; cursor: pointer; font-weight: 600; }
         button.success { background: #27ae60; }
         button.danger { background: #e74c3c; }
-        .hidden { display: none; }
+        .hidden { display: none !important; }
         .support-text { margin-top: 20px; font-size: 12px; color: #888; text-align: center; }
         .today-stats-link { font-size: 12px; color: #3498db; cursor: pointer; text-decoration: underline; margin-top: 5px; text-align: center; }
 
@@ -91,7 +91,7 @@
     </div>
 </div>
 
-<!-- 普通通知弹窗（清扫、用车等） -->
+<!-- 普通通知弹窗 -->
 <div id="listModal" class="modal-overlay">
     <div class="modal-content">
         <h4 id="listTitle"></h4>
@@ -118,29 +118,28 @@
 </div>
 
 <script>
-    // ===== 立即执行：清除可能遗留的旧状态，确保只显示登录界面 =====
-    (function() {
-        // 强制隐藏所有可能意外出现的面板和弹窗
-        document.getElementById('dashboardPanel').classList.add('hidden');
+    // ==================== 绝对安全初始化 ====================
+    // 1. 在一切开始前，强制隐藏对话框和仪表盘，清除登录状态
+    document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('chatModal').classList.add('hidden');
+        document.getElementById('dashboardPanel').classList.add('hidden');
         document.getElementById('listModal').style.display = 'none';
-        // 如果存在旧的登录 token，清除它（因为我们不想记住登录，每次都要输入密码）
         localStorage.removeItem('front_password');
-        // 重置所有全局变量
         window.currentRoom = null;
         window.chatActive = false;
         if (window.alertTimer) { clearInterval(window.alertTimer); window.alertTimer = null; }
-    })();
+    });
 
+    // 2. 全局变量
     let dashboardData = null;
     let takeoverRooms = [];
     let alertTimer = null;
-    let alertSpeakCount = 0;
     let chatActive = false;
     let currentRoom = null;
     const PASSWORD = () => localStorage.getItem('front_password') || '';
     const BASE = '/api/frontdesk';
 
+    // 工具函数
     function speak(text) {
         if ('speechSynthesis' in window) {
             const utter = new SpeechSynthesisUtterance(text);
@@ -152,7 +151,6 @@
 
     function stopAlert() {
         if (alertTimer) { clearInterval(alertTimer); alertTimer = null; }
-        alertSpeakCount = 0;
     }
 
     function startAlert() {
@@ -172,6 +170,7 @@
         }, 30000);
     }
 
+    // 登录
     async function login() {
         const pass = document.getElementById('frontPass').value;
         const res = await fetch(BASE + '?password=' + encodeURIComponent(pass));
@@ -180,7 +179,6 @@
             localStorage.setItem('front_password', pass);
             document.getElementById('loginPanel').classList.add('hidden');
             document.getElementById('dashboardPanel').classList.remove('hidden');
-            // 再次确保对话框关闭
             document.getElementById('chatModal').classList.add('hidden');
             currentRoom = null;
             chatActive = false;
@@ -194,6 +192,7 @@
         }
     }
 
+    // 统计与更新
     function countByType(notifications) {
         const counts = { room_msg:0, clean:0, car:0, food:0, extend:0 };
         if (notifications) {
@@ -202,7 +201,7 @@
         return counts;
     }
 
-    function updateDashboard(skipVoice = false) {
+    function updateDashboard() {
         const notifications = dashboardData?.notifications || [];
         const current = countByType(notifications);
         current.usage = dashboardData?.todayRooms?.length || 0;
@@ -223,11 +222,8 @@
     }
 
     function openRoomMsgList() {
-        if (currentRoom) {
-            document.getElementById('chatModal').classList.remove('hidden');
-        } else {
-            openNotifyList('room_msg');
-        }
+        if (currentRoom) document.getElementById('chatModal').classList.remove('hidden');
+        else openNotifyList('room_msg');
     }
 
     // ===== 接管房间相关 =====
@@ -379,10 +375,7 @@
         }
     }
 
-    function openTodayStats() {
-        // 此处可实现今日处理统计
-        alert('今日处理统计功能');
-    }
+    function openTodayStats() { alert('今日处理统计'); }
 
     function openUsageList() {
         const rooms = dashboardData?.todayRooms || [];
@@ -403,6 +396,7 @@
         return map[type] || '';
     }
 
+    // 定时任务（仅在登录后执行）
     function startTakeoverCheck() {
         setInterval(() => {
             if (!document.getElementById('dashboardPanel').classList.contains('hidden')) {
@@ -422,9 +416,7 @@
         }, 30000);
     }
 
-    window.addEventListener('beforeunload', () => {
-        stopAlert();
-    });
+    window.addEventListener('beforeunload', stopAlert);
 </script>
 </body>
 </html>
