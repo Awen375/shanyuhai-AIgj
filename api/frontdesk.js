@@ -97,7 +97,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ success: true });
         }
 
-        // 接管房间列表
+        // ★ 接管房间列表（新增返回 groupId）
         if (action === 'takeover_rooms' && req.method === 'GET') {
             const keys = await redis.keys('takeover:*');
             const rooms = [];
@@ -108,14 +108,19 @@ export default async function handler(req, res) {
                     if (takeover.active) {
                         const r = key.replace('takeover:', '');
                         const msgKeys = await redis.keys(`pending_msg:${r}:*`);
-                        rooms.push({ room: r, unread: msgKeys.length, startTime: takeover.startTime });
+                        rooms.push({
+                            room: r,
+                            unread: msgKeys.length,
+                            startTime: takeover.startTime,
+                            groupId: takeover.groupId || ''   // 回传 groupId
+                        });
                     }
                 }
             }
             return res.status(200).json({ rooms });
         }
 
-        // ========== 聊天消息（支持 groupId 隔离） ==========
+        // 聊天消息（支持 groupId 隔离）
         if (action === 'chat_messages' && req.method === 'GET') {
             const room = url.searchParams.get('room');
             const groupId = url.searchParams.get('groupId') || '';
@@ -132,9 +137,9 @@ export default async function handler(req, res) {
                 try {
                     const msg = typeof data === 'string' ? JSON.parse(data) : data;
                     if (msg.room !== room) continue;
-                    // groupId 过滤：如果消息有 groupId 且不等于请求的 groupId，则跳过
-                    if (groupId && msg.groupId && msg.groupId !== groupId) continue;
-                    if (!groupId && msg.groupId) continue; // 兼容：有 groupId 的消息不显示给无 groupId 请求
+                    // 隔离规则：如果消息带有 groupId，则必须与请求的 groupId 完全匹配
+                    if (msg.groupId && msg.groupId !== groupId) continue;
+                    if (!msg.groupId && groupId) continue; // 不带 groupId 的消息（旧数据）不返回给有 groupId 的请求
 
                     const msgTime = new Date(msg.time).getTime();
                     if (since && msgTime <= new Date(since).getTime()) continue;
@@ -150,13 +155,16 @@ export default async function handler(req, res) {
                 } catch (e) {}
             }
 
-            // pending_msg（接管时客人发来的消息）
+            // 接入接管中的 pending 消息（同样需要 groupId 过滤）
             const pendingKeys = await redis.keys(`pending_msg:${room}:*`);
             for (const key of pendingKeys) {
                 const data = await redis.get(key);
                 if (!data) continue;
                 try {
                     const msg = typeof data === 'string' ? JSON.parse(data) : data;
+                    // 如果 pending 消息带有 groupId，则按隔离规则处理
+                    if (msg.groupId && msg.groupId !== groupId) continue;
+                    if (!msg.groupId && groupId) continue;
                     const msgTime = new Date(msg.time).getTime();
                     if (since && msgTime <= new Date(since).getTime()) continue;
                     messages.push({ sender: 'guest', text: msg.text, time: msg.time });
@@ -167,7 +175,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ messages });
         }
 
-        // 发送消息（前台）—— 携带 groupId 以保证客人可见
+        // 发送前台消息（需要传入 groupId 以隔离）
         if (action === 'send_msg' && req.method === 'POST') {
             const { room, text, groupId } = req.body || {};
             if (!room || !text) return res.status(400).json({ error: '缺少参数' });
@@ -181,7 +189,7 @@ export default async function handler(req, res) {
                 time: new Date().toISOString()
             }));
             await redis.expire(chatKey, 60 * 60 * 24 * 90);
-            // 清除该房间未读的 pending 消息
+            // 清除该房间的未读 pending 消息
             const pendingKeys = await redis.keys(`pending_msg:${room}:*`);
             for (const key of pendingKeys) await redis.del(key);
             return res.status(200).json({ success: true });
@@ -202,7 +210,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ success: true });
         }
 
-        // 房间二维码列表（不变）
+        // 房间二维码列表
         if (action === 'rooms' && req.method === 'GET') {
             const keys = await redis.keys('room:*');
             const rooms = [];
