@@ -12,8 +12,9 @@
         .chat-messages { flex: 1; overflow-y: auto; padding: 20px; }
         .message { margin-bottom: 15px; display: flex; }
         .message.user { justify-content: flex-end; }
-        .message.ai, .message.frontdesk { justify-content: flex-start; }
-        .bubble { max-width: 70%; padding: 10px 16px; border-radius: 20px; font-size: 16px; line-height: 1.4; }
+        .message.ai { justify-content: flex-start; }
+        .message.frontdesk { justify-content: flex-start; }
+        .bubble { max-width: 70%; padding: 10px 16px; border-radius: 20px; font-size: 16px; line-height: 1.4; word-break: break-word; }
         .message.user .bubble { background: #1e90ff; color: white; }
         .message.ai .bubble { background: #f0f4f8; color: #333; }
         .message.frontdesk .bubble { background: #e8f4fd; color: #0b4f6c; border: 1px solid #1e90ff; }
@@ -22,40 +23,97 @@
         .chat-input button { margin-left: 10px; padding: 12px 24px; background: #1e90ff; color: white; border: none; border-radius: 25px; cursor: pointer; font-weight: 600; }
         .chat-input button:disabled { background: #ccc; cursor: not-allowed; }
         .notice { text-align: center; color: #888; font-size: 14px; margin-top: 5px; }
+        .fullscreen-msg { display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100%; text-align: center; padding: 20px; }
+        .fullscreen-msg h3 { color: #0b4f6c; }
     </style>
 </head>
 <body>
-<div class="chat-container">
-    <div class="chat-header">
-        <h2>🌊 山予海 AI 管家</h2>
-        <p id="roomInfo" style="color:#888;"></p>
+<div class="chat-container" id="chatContainer">
+    <div id="loadingMsg" style="display:flex; justify-content:center; align-items:center; height:100%;">验证中...</div>
+    <div id="waitingMsg" class="fullscreen-msg" style="display:none;">
+        <h3>🕒 等待分配</h3>
+        <p id="waitingText"></p>
     </div>
-    <div class="chat-messages" id="chatMessages">
-        <div style="text-align:center; color:#aaa;">我是您的专属管家小予，有什么可以帮您？</div>
+    <div id="expiredMsg" class="fullscreen-msg" style="display:none;">
+        <h3>👋 管家已过期</h3>
+        <p>您的AI专属管家已过期，很高兴陪您一起度过这场难忘的度假。下次再见，我在山予海永远等您。</p>
     </div>
-    <div class="chat-input">
-        <input type="text" id="messageInput" placeholder="输入您的问题...">
-        <button id="sendBtn" onclick="sendMessage()">发送</button>
+    <div id="chatInterface" style="display:none; flex-direction: column; height: 100%;">
+        <div class="chat-header">
+            <h2>🌊 山予海 AI 管家</h2>
+            <p id="roomInfo" style="color:#888;"></p>
+        </div>
+        <div class="chat-messages" id="chatMessages"></div>
+        <div class="chat-input">
+            <input type="text" id="messageInput" placeholder="输入您的问题...">
+            <button id="sendBtn" onclick="sendMessage()">发送</button>
+        </div>
+        <div class="notice">需要人工帮助？请回复“叫前台”</div>
     </div>
-    <div class="notice">需要人工帮助？请回复“叫前台”</div>
 </div>
 
 <script>
-    // 从 URL 获取房间参数
     const urlParams = new URLSearchParams(window.location.search);
-    const currentRoom = urlParams.get('room') || '未知房间';
-    document.getElementById('roomInfo').innerText = `当前房间：${currentRoom}`;
+    const currentRoom = urlParams.get('room');
+    const token = urlParams.get('token');
+    const checkin = urlParams.get('checkin');
+    const checkout = urlParams.get('checkout');
 
+    if (!currentRoom || !token) {
+        document.getElementById('loadingMsg').innerHTML = '<h3>参数错误</h3>';
+    } else {
+        // 验证房间时效
+        verifyRoom();
+    }
+
+    let lastMessageTime = null;
     let pollingTimer = null;
 
-    // 发送消息
+    async function verifyRoom() {
+        try {
+            let url = `/api/check_room?room=${currentRoom}&token=${token}`;
+            if (checkin && checkout) url += `&checkin=${checkin}&checkout=${checkout}`;
+            const res = await fetch(url);
+            const data = await res.json();
+            if (data.valid) {
+                // 正常，显示聊天界面
+                document.getElementById('loadingMsg').style.display = 'none';
+                document.getElementById('chatInterface').style.display = 'flex';
+                document.getElementById('roomInfo').innerText = `房间：${currentRoom}`;
+                startChat();
+            } else {
+                document.getElementById('loadingMsg').style.display = 'none';
+                if (data.reason === 'waiting') {
+                    document.getElementById('waitingMsg').style.display = 'flex';
+                    document.getElementById('waitingText').innerText = data.message;
+                } else if (data.reason === 'expired') {
+                    document.getElementById('expiredMsg').style.display = 'flex';
+                } else {
+                    alert('验证失败：' + data.reason);
+                }
+            }
+        } catch (err) {
+            alert('网络错误，请重试');
+        }
+    }
+
+    function startChat() {
+        lastMessageTime = null;
+        initialLoad();
+        pollingTimer = setInterval(pollNewMessages, 5000);
+
+        document.getElementById('messageInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+    }
+
     async function sendMessage() {
         const input = document.getElementById('messageInput');
         const text = input.value.trim();
         if (!text) return;
-        
-        // 显示用户消息
-        appendMessage('user', text);
+
+        const localTime = new Date().toISOString();
+        appendMessage('user', text, localTime);
         input.value = '';
         document.getElementById('sendBtn').disabled = true;
 
@@ -67,55 +125,62 @@
             });
             const data = await res.json();
             if (data.reply) {
-                appendMessage('ai', data.reply);
+                appendMessage('ai', data.reply, new Date().toISOString());
             }
         } catch (err) {
-            appendMessage('ai', '抱歉，服务暂时不可用，请稍后再试。');
+            appendMessage('ai', '抱歉，服务暂时不可用，请稍后再试。', new Date().toISOString());
         } finally {
             document.getElementById('sendBtn').disabled = false;
         }
     }
 
-    // 追加消息到界面
-    function appendMessage(sender, text) {
+    function appendMessage(sender, text, time) {
+        const exist = document.querySelector(`[data-time="${time}"][data-text="${text}"]`);
+        if (exist) return;
+
         const chatBox = document.getElementById('chatMessages');
         const msgDiv = document.createElement('div');
         msgDiv.className = `message ${sender}`;
+        msgDiv.setAttribute('data-time', time);
+        msgDiv.setAttribute('data-text', text);
         msgDiv.innerHTML = `<div class="bubble">${text}</div>`;
         chatBox.appendChild(msgDiv);
         chatBox.scrollTop = chatBox.scrollHeight;
+
+        if (!lastMessageTime || new Date(time) > new Date(lastMessageTime)) {
+            lastMessageTime = time;
+        }
     }
 
-    // 轮询前台接管后的消息
-    function startPolling() {
-        pollingTimer = setInterval(async () => {
-            try {
-                const res = await fetch(`/api/frontdesk?password=guest&action=chat_messages&room=${currentRoom}`);
-                const data = await res.json();
-                if (data.messages && data.messages.length > 0) {
-                    // 重新渲染所有消息（简单去重方式，避免闪烁，实际可优化）
-                    const chatBox = document.getElementById('chatMessages');
-                    chatBox.innerHTML = ''; 
-                    data.messages.forEach(m => {
-                        let sender = m.sender === 'guest' ? 'user' : (m.sender === 'frontdesk' ? 'frontdesk' : 'ai');
-                        const msgDiv = document.createElement('div');
-                        msgDiv.className = `message ${sender}`;
-                        msgDiv.innerHTML = `<div class="bubble">${m.text}</div>`;
-                        chatBox.appendChild(msgDiv);
-                    });
-                    chatBox.scrollTop = chatBox.scrollHeight;
+    async function pollNewMessages() {
+        try {
+            let url = `/api/frontdesk?password=guest&action=chat_messages&room=${encodeURIComponent(currentRoom)}`;
+            if (lastMessageTime) url += `&since=${encodeURIComponent(lastMessageTime)}`;
+            const res = await fetch(url);
+            const data = await res.json();
+            if (data.messages && data.messages.length > 0) {
+                for (const m of data.messages) {
+                    let sender = m.sender === 'guest' ? 'user' : (m.sender === 'frontdesk' ? 'frontdesk' : 'ai');
+                    appendMessage(sender, m.text, m.time);
                 }
-            } catch (e) {}
-        }, 5000);
+            }
+        } catch (e) {}
     }
 
-    // 允许回车发送
-    document.getElementById('messageInput').addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') sendMessage();
-    });
-
-    // 启动轮询
-    startPolling();
+    async function initialLoad() {
+        try {
+            const res = await fetch(`/api/frontdesk?password=guest&action=chat_messages&room=${encodeURIComponent(currentRoom)}`);
+            const data = await res.json();
+            if (data.messages && data.messages.length > 0) {
+                const chatBox = document.getElementById('chatMessages');
+                chatBox.innerHTML = '';
+                for (const m of data.messages) {
+                    let sender = m.sender === 'guest' ? 'user' : (m.sender === 'frontdesk' ? 'frontdesk' : 'ai');
+                    appendMessage(sender, m.text, m.time);
+                }
+            }
+        } catch (e) {}
+    }
 </script>
 </body>
 </html>
