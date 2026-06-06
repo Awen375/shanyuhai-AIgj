@@ -32,7 +32,8 @@ export default async function handler(req, res) {
         if (password !== 'guest' && !(await checkPassword(password))) {
             return res.status(403).json({ error: '密码错误' });
         }
-    } else {
+    } else if (action !== 'heartbeat') {
+        // 其他接口都需要密码验证（临时二维码接口同样需要）
         if (!password || !(await checkPassword(password))) {
             return res.status(403).json({ error: '密码错误' });
         }
@@ -97,7 +98,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ success: true });
         }
 
-        // ★ 接管房间列表（新增返回 groupId）
+        // 接管房间列表（保持不变，但返回 groupId）
         if (action === 'takeover_rooms' && req.method === 'GET') {
             const keys = await redis.keys('takeover:*');
             const rooms = [];
@@ -112,7 +113,7 @@ export default async function handler(req, res) {
                             room: r,
                             unread: msgKeys.length,
                             startTime: takeover.startTime,
-                            groupId: takeover.groupId || ''   // 回传 groupId
+                            groupId: takeover.groupId || ''
                         });
                     }
                 }
@@ -137,9 +138,8 @@ export default async function handler(req, res) {
                 try {
                     const msg = typeof data === 'string' ? JSON.parse(data) : data;
                     if (msg.room !== room) continue;
-                    // 隔离规则：如果消息带有 groupId，则必须与请求的 groupId 完全匹配
                     if (msg.groupId && msg.groupId !== groupId) continue;
-                    if (!msg.groupId && groupId) continue; // 不带 groupId 的消息（旧数据）不返回给有 groupId 的请求
+                    if (!msg.groupId && groupId) continue;
 
                     const msgTime = new Date(msg.time).getTime();
                     if (since && msgTime <= new Date(since).getTime()) continue;
@@ -155,14 +155,12 @@ export default async function handler(req, res) {
                 } catch (e) {}
             }
 
-            // 接入接管中的 pending 消息（同样需要 groupId 过滤）
             const pendingKeys = await redis.keys(`pending_msg:${room}:*`);
             for (const key of pendingKeys) {
                 const data = await redis.get(key);
                 if (!data) continue;
                 try {
                     const msg = typeof data === 'string' ? JSON.parse(data) : data;
-                    // 如果 pending 消息带有 groupId，则按隔离规则处理
                     if (msg.groupId && msg.groupId !== groupId) continue;
                     if (!msg.groupId && groupId) continue;
                     const msgTime = new Date(msg.time).getTime();
@@ -175,7 +173,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ messages });
         }
 
-        // 发送前台消息（需要传入 groupId 以隔离）
+        // 发送前台消息（带 groupId）
         if (action === 'send_msg' && req.method === 'POST') {
             const { room, text, groupId } = req.body || {};
             if (!room || !text) return res.status(400).json({ error: '缺少参数' });
@@ -189,7 +187,6 @@ export default async function handler(req, res) {
                 time: new Date().toISOString()
             }));
             await redis.expire(chatKey, 60 * 60 * 24 * 90);
-            // 清除该房间的未读 pending 消息
             const pendingKeys = await redis.keys(`pending_msg:${room}:*`);
             for (const key of pendingKeys) await redis.del(key);
             return res.status(200).json({ success: true });
@@ -210,7 +207,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ success: true });
         }
 
-        // 房间二维码列表
+        // 房间二维码列表（原用于固定房间，现在临时二维码功能也用 rooms 查询，保留）
         if (action === 'rooms' && req.method === 'GET') {
             const keys = await redis.keys('room:*');
             const rooms = [];
@@ -236,6 +233,73 @@ export default async function handler(req, res) {
             room.updatedAt = new Date().toISOString();
             await redis.set(`room:${id}`, JSON.stringify(room));
             return res.status(200).json({ success: true, token: newToken });
+        }
+
+        // ===== 临时二维码管理 =====
+        // 获取所有临时二维码列表
+        if (action === 'temp_qrs' && req.method === 'GET') {
+            const keys = await redis.keys('temp_qr:*');
+            const qrs = [];
+            for (const key of keys) {
+                const data = await redis.get(key);
+                if (data) {
+                    const qr = typeof data === 'string' ? JSON.parse(data) : data;
+                    if (qr.status === 'active') {
+                        qrs.push({
+                            groupId: key.replace('temp_qr:', ''),
+                            roomId: qr.roomId,
+                            roomName: qr.roomName,
+                            checkin: qr.checkin,
+                            checkout: qr.checkout,
+                            checkinText: qr.checkinText || '',
+                            checkoutText: qr.checkoutText || '',
+                            token: qr.token
+                        });
+                    }
+                }
+            }
+            return res.status(200).json({ qrs });
+        }
+
+        // 创建临时二维码
+        if (action === 'create_temp_qr' && req.method === 'POST') {
+            const { roomId, roomName, token, checkin, checkout } = req.body || {};
+            if (!roomId || !checkin || !checkout || !token) return res.status(400).json({ error: '参数不完整' });
+
+            const groupId = `${Date.now()}-${Math.random().toString(36).substr(2,8)}`;
+
+            // 格式化展示时间
+            const formatShowTime = (str) => {
+                const y = str.substring(0,4), m = str.substring(4,6), d = str.substring(6,8);
+                const h = str.substring(8,10), min = str.substring(10,12);
+                return `${y}-${m}-${d} ${h}:${min}`;
+            };
+
+            await redis.set(`temp_qr:${groupId}`, JSON.stringify({
+                roomId,
+                roomName,
+                token,
+                checkin,
+                checkout,
+                checkinText: formatShowTime(checkin),
+                checkoutText: formatShowTime(checkout),
+                status: 'active',
+                createdAt: Date.now()
+            }));
+
+            return res.status(200).json({ success: true, groupId });
+        }
+
+        // 删除（停用）临时二维码
+        if (action === 'delete_temp_qr' && req.method === 'POST') {
+            const { groupId } = req.body || {};
+            if (!groupId) return res.status(400).json({ error: '缺少 groupId' });
+            const existing = await redis.get(`temp_qr:${groupId}`);
+            if (!existing) return res.status(404).json({ error: '二维码不存在' });
+            const qr = typeof existing === 'string' ? JSON.parse(existing) : existing;
+            qr.status = 'disabled';
+            await redis.set(`temp_qr:${groupId}`, JSON.stringify(qr));
+            return res.status(200).json({ success: true });
         }
 
         return res.status(404).json({ error: '接口不存在' });
