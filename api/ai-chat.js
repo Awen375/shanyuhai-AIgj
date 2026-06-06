@@ -6,22 +6,6 @@ const redis = new Redis({
 });
 
 const hotelInfo = `
-【民宿基本信息】
-- 民宿名称：霞浦县山予海民宿
-- 地址：福建省宁德市霞浦县三沙镇奇沙17号
-- 联系电话：0593-8850999（前台上班时间：上午8:00-晚23:00）
-- 退房时间：中午12:00前
-- 入住时间：下午14:00后
-- WiFi名称：山予海
-- WiFi密码：88888888
-- 早餐时间：7:30-9:00，负一楼海景餐厅
-- 早餐内容：中式早餐或当地的特色早餐每天不同不固定供应（中式早餐有：稀饭，牛奶，包子，油条，鸡蛋等小菜。特色早餐有：锅边糊，米粉糊，酸辣汤等。早餐信息不要扩充按照填写的信息来）
-- 停车：免费停车位，可停9辆车
-- 行李寄存：免费
-- 加床：不可加床
-- 热水：民宿提供24小时热水
-- 充电桩：民宿门口有充电桩可以自行扫码使用
-
 【民宿特色】
 - 所有房间都是180度海景房，躺在床上就能看大海
 - 顶楼露台和一楼吧台是网红打卡点，拍照绝美
@@ -97,29 +81,21 @@ export default async function handler(req, res) {
 
     try {
         const aiSettings = await getAISettings();
-        
+
         // 检查房间是否被前台接管
         const takeoverKey = `takeover:${room}`;
         const takeoverData = await redis.get(takeoverKey);
-        const isTakeover = takeoverData && typeof takeoverData === 'object' && takeoverData.active;
+        const isTakeover = takeoverData && (typeof takeoverData === 'object') && takeoverData.active;
 
         if (isTakeover) {
-            // 存储客人消息，等待前台回复
             const msgKey = `pending_msg:${room}:${Date.now()}`;
-            await redis.set(msgKey, JSON.stringify({
-                room,
-                sender: 'guest',
-                text: question,
-                time: new Date().toISOString()
-            }));
+            await redis.set(msgKey, JSON.stringify({ room, sender: 'guest', text: question, time: new Date().toISOString() }));
             await redis.expire(msgKey, 60 * 60 * 24);
-            // 重置自动结束计时器（前台接管期间每次客人消息都刷新）
             takeoverData.lastGuestMsg = Date.now();
             await redis.set(takeoverKey, JSON.stringify(takeoverData));
-            return res.status(200).json({ reply: '' }); // 不回复，等待前台
+            return res.status(200).json({ reply: '' });
         }
 
-        // 正常AI处理
         const knowledgeKeys = await redis.keys('knowledge:*');
         let knowledgeText = '';
         for (const key of knowledgeKeys) {
@@ -175,7 +151,12 @@ ${knowledgeText || '暂无'}`;
 
         // ★ 处理“房客消息”类型的关键词
         if (matched && matched.type === 'room_msg') {
-            // 创建通知
+            // 判断是否在下班时间（23:00 - 8:00）
+            if (hour >= 23 || hour < 8) {
+                // 下班时间，直接返回下班回复
+                return res.status(200).json({ reply: '我们前台的小伙伴们都下班啦！目前是下班时间，有什么问题您可以先问我我可以帮您处理的。上班时间：8:00-23:00' });
+            }
+            // 上班时间：创建通知并设置接管
             await redis.set(`notification:${Date.now()}`, JSON.stringify({
                 room: room || '未知',
                 question,
@@ -185,17 +166,15 @@ ${knowledgeText || '暂无'}`;
                 time: new Date().toISOString(),
                 status: 'pending'
             }));
-            // 设置房间接管状态
             await redis.set(takeoverKey, JSON.stringify({
                 active: true,
                 startTime: Date.now(),
                 lastGuestMsg: Date.now()
             }));
-            // 返回固定回复
             return res.status(200).json({ reply: '正在通知前台的小伙伴，接通中请稍等...' });
         }
 
-        // 其他类型关键词的回复扩展逻辑（不变）
+        // 其他类型关键词的回复扩展
         if (matched && matched.reply) {
             let replyBody = matched.reply;
             let instruction = '';
@@ -208,7 +187,6 @@ ${knowledgeText || '暂无'}`;
             if (instruction) systemPrompt += `\n【回复指示】请严格遵循以下要求来调整回复的语气、风格或内容：${instruction}`;
         }
 
-        // 调用火山方舟 V3.2
         const response = await fetch('https://ark.cn-beijing.volces.com/api/v3/chat/completions', {
             method: 'POST',
             headers: {
@@ -232,7 +210,6 @@ ${knowledgeText || '暂无'}`;
         if (!content) return res.status(500).json({ error: 'AI无返回' });
         let reply = content;
 
-        // 记录未回答问题
         const unsurePhrases = ['不太确定', '无法回答', '这个我不太清楚', '抱歉，我暂时无法',
             '建议您拨打前台', '您可以咨询前台', '暂时无法提供', '我也不太了解'];
         if (unsurePhrases.some(phrase => reply.includes(phrase))) {
@@ -243,12 +220,10 @@ ${knowledgeText || '暂无'}`;
             if (aiSettings.fallbackNote) reply += '\n' + aiSettings.fallbackNote;
         }
 
-        // 存储聊天记录
         const chatKey = `chat:${Date.now()}:${Math.random().toString(36).substr(2,6)}`;
         await redis.set(chatKey, JSON.stringify({ room: room || '未知', question, reply, time: new Date().toISOString() }));
         await redis.expire(chatKey, 60 * 60 * 24 * 90);
 
-        // 创建通知（排除 room_msg，已在前面处理）
         if (matched && matched.type !== 'other' && matched.type !== 'room_msg') {
             await redis.set(`notification:${Date.now()}`, JSON.stringify({
                 room: room || '未知',
