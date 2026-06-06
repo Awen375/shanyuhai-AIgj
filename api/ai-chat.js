@@ -84,11 +84,10 @@ async function matchKeywords(text) {
     if (!keywordsData) return null;
     const list = typeof keywordsData === 'string' ? JSON.parse(keywordsData) : keywordsData;
     if (!Array.isArray(list)) return null;
-    
-    // 优先匹配 room_msg 类型，确保人工客服触发正确
     let matchedOther = null;
     for (const item of list) {
         if (text.includes(item.keyword)) {
+            // ★ 优先返回 room_msg 类型
             if (item.type === 'room_msg') return item;
             if (item.type === 'other') {
                 matchedOther = item;
@@ -113,6 +112,7 @@ export default async function handler(req, res) {
     try {
         const aiSettings = await getAISettings();
 
+        // 接管状态检查
         const takeoverData = await redis.get(`takeover:${room}`);
         const isTakeover = takeoverData && (typeof takeoverData === 'object' ? takeoverData.active : JSON.parse(takeoverData).active);
 
@@ -123,6 +123,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ reply: '' });
         }
 
+        // 加载自定义知识库
         const knowledgeKeys = await redis.keys('knowledge:*');
         let knowledgeText = '';
         for (const key of knowledgeKeys) {
@@ -138,13 +139,51 @@ export default async function handler(req, res) {
         const todayStr = beijingTime.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
         const timeStr = beijingTime.toLocaleTimeString('zh-CN', { hour12: false });
         const hour = beijingTime.getHours();
+        const lunarDay = ((beijingTime.getTime() / 86400000 + 25569) % 29.53);
+        const isSpringTide = (lunarDay < 4 || lunarDay > 25.5 || (lunarDay > 12 && lunarDay < 17));
 
+        let activityHint = '';
+        if (hour >= 5 && hour < 8) activityHint = '现在是清晨，可以推荐花竹日出或晨间海滩散步。';
+        else if (hour >= 8 && hour < 11) activityHint = '现在是上午，适合小皓赶海或附近沙滩游玩。';
+        else if (hour >= 11 && hour < 14) activityHint = '现在是中午，推荐三沙镇海鲜大排档。';
+        else if (hour >= 14 && hour < 17) activityHint = '现在是下午，适合高罗沙滩或露台下午茶。';
+        else if (hour >= 17 && hour < 19) activityHint = '现在是傍晚，强烈推荐东壁村看日落。';
+        else if (hour >= 19 && hour < 22) activityHint = '现在是晚上，可以露台吹风或三沙镇夜宵。';
+        else activityHint = '现在是深夜，提醒客人早休息，明早可看日出。';
+
+        let tideHint = isSpringTide ? '近期正值大潮，退潮幅度大，赶海收获会更多哦！' : '目前是小潮期，海滩暴露面积较小，但依然可以享受赶海乐趣。';
+
+        let systemPrompt = `你是"${aiSettings.name}"，山予海民宿的专属AI管家，性格亲切活泼，像朋友一样和客人交流。
+现在是北京时间 ${todayStr} ${timeStr}。${activityHint}
+${tideHint}
+当客人询问赶海时间时，请根据当前日期估算退潮时段（每天退潮大约比前一天推迟40-50分钟），并告诉客人最佳赶海时间是退潮后2小时内。可以结合农历日期判断大潮小潮，并给出相应的建议。如果无法精确计算，可建议客人咨询前台获取准确的潮汐表，同时提供赶海技巧和安全提示。
+
+【核心规则】
+1. 你只能回答与山予海民宿及相关旅游的问题。遇到完全无关的问题，请礼貌拒绝。
+2. 理解客人的同义表达。
+3. 如果客人问题模糊，主动追问。
+4. 用第一人称，亲切自然，适当使用emoji。
+5. 如果遇到需要人工处理的问题，提示拨打前台电话 0593-8850999。
+6. 如果客人问到关于日落日出的时间以及潮汐时间，按照真实的时间回复。
+
+【重要提醒】
+关于潮汐和赶海时间的建议为估算值，存在不确定性。如需获取最准确的潮汐信息，建议咨询前台的小伙伴。需要我帮您呼叫前台吗？如需呼叫，请回复“呼叫前台”。
+
+【民宿完整信息】
+${hotelInfo}
+
+【补充知识库】
+${knowledgeText || '暂无'}`;
+
+        // 关键词匹配
         const matched = await matchKeywords(question);
         console.log('关键词匹配结果:', JSON.stringify(matched));
 
+        // 处理“房客消息”类型
         if (matched && matched.type === 'room_msg') {
             const online = await isFrontdeskOnline();
             console.log('前台在线状态:', online);
+            // 下班时间 (23:00 - 8:00) 且前台不在线
             if (hour >= 23 || hour < 8) {
                 if (online) {
                     await redis.set(`notification:${Date.now()}`, JSON.stringify({
@@ -160,6 +199,7 @@ export default async function handler(req, res) {
                     return res.status(200).json({ reply: '我们前台的小伙伴们都下班啦！目前是下班时间，有什么问题您可以先问我我可以帮您处理的。上班时间：8:00-23:00' });
                 }
             } else {
+                // 上班时间
                 if (online) {
                     await redis.set(`notification:${Date.now()}`, JSON.stringify({
                         room: room || '未知', question, reply: '', keyword: matched.keyword,
@@ -176,9 +216,72 @@ export default async function handler(req, res) {
             }
         }
 
-        // 其余逻辑保持不变，这里为了节省篇幅省略了systemPrompt构建和AI调用部分，你现有的就可以
-        // ... 请把你原来文件里剩下的构建提示词、调AI、存储日志的代码完整保留 ...
-        
+        // 其他类型关键词的回复扩展
+        if (matched && matched.reply) {
+            let replyBody = matched.reply;
+            let instruction = '';
+            const bracketMatch = matched.reply.match(/（([^）]+)）/);
+            if (bracketMatch) {
+                replyBody = matched.reply.replace(/（[^）]+）/, '').trim();
+                instruction = bracketMatch[1];
+            }
+            if (replyBody) systemPrompt += `\n\n【回复要点】请根据以下内容生成回复：${replyBody}`;
+            if (instruction) systemPrompt += `\n【回复指示】请严格遵循以下要求来调整回复的语气、风格或内容：${instruction}`;
+        }
+
+        // 调用火山方舟 V3.2
+        const response = await fetch('https://ark.cn-beijing.volces.com/api/v3/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${process.env.VOLCENGINE_API_KEY}`
+            },
+            body: JSON.stringify({
+                model: 'ep-m-20260521173515-xfdzp',
+                messages: [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: question }
+                ],
+                temperature: 0.7,
+                max_tokens: 800
+            })
+        });
+
+        const data = await response.json();
+        if (data.error) return res.status(500).json({ error: 'AI异常：' + data.error.message });
+        const content = data?.choices?.[0]?.message?.content;
+        if (!content) return res.status(500).json({ error: 'AI无返回' });
+        let reply = content;
+
+        // 记录未回答问题
+        const unsurePhrases = ['不太确定', '无法回答', '这个我不太清楚', '抱歉，我暂时无法',
+            '建议您拨打前台', '您可以咨询前台', '暂时无法提供', '我也不太了解'];
+        if (unsurePhrases.some(phrase => reply.includes(phrase))) {
+            await redis.set(`unanswered:${Date.now()}`, JSON.stringify({
+                question, room: room || '', time: new Date().toISOString(), status: 'pending'
+            }));
+            reply = aiSettings.fallbackReply.replace('{name}', aiSettings.name).replace('{phone}', '0593-8850999').replace('{room}', room || '');
+            if (aiSettings.fallbackNote) reply += '\n' + aiSettings.fallbackNote;
+        }
+
+        // 存储聊天记录
+        const chatKey = `chat:${Date.now()}:${Math.random().toString(36).substr(2,6)}`;
+        await redis.set(chatKey, JSON.stringify({ room: room || '未知', question, reply, time: new Date().toISOString() }));
+        await redis.expire(chatKey, 60 * 60 * 24 * 90);
+
+        // 创建通知（排除 'other' 和 'room_msg' 类型）
+        if (matched && matched.type !== 'other' && matched.type !== 'room_msg') {
+            await redis.set(`notification:${Date.now()}`, JSON.stringify({
+                room: room || '未知',
+                question,
+                reply,
+                keyword: matched.keyword,
+                type: matched.type,
+                time: new Date().toISOString(),
+                status: 'pending'
+            }));
+        }
+
         return res.status(200).json({ reply });
     } catch (err) {
         return res.status(500).json({ error: '服务错误' });
