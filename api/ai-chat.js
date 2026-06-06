@@ -6,6 +6,22 @@ const redis = new Redis({
 });
 
 const hotelInfo = `
+【民宿基本信息】
+- 民宿名称：霞浦县山予海民宿
+- 地址：福建省宁德市霞浦县三沙镇奇沙17号
+- 联系电话：0593-8850999（前台上班时间：上午8:00-晚23:00）
+- 退房时间：中午12:00前
+- 入住时间：下午14:00后
+- WiFi名称：山予海
+- WiFi密码：88888888
+- 早餐时间：7:30-9:00，负一楼海景餐厅
+- 早餐内容：中式早餐或当地的特色早餐每天不同不固定供应（中式早餐有：稀饭，牛奶，包子，油条，鸡蛋等小菜。特色早餐有：锅边糊，米粉糊，酸辣汤等。早餐信息不要扩充按照填写的信息来）
+- 停车：免费停车位，可停9辆车
+- 行李寄存：免费
+- 加床：不可加床
+- 热水：民宿提供24小时热水
+- 充电桩：民宿门口有充电桩可以自行扫码使用
+
 【民宿特色】
 - 所有房间都是180度海景房，躺在床上就能看大海
 - 顶楼露台和一楼吧台是网红打卡点，拍照绝美
@@ -68,10 +84,15 @@ async function matchKeywords(text) {
     if (!keywordsData) return null;
     const list = typeof keywordsData === 'string' ? JSON.parse(keywordsData) : keywordsData;
     if (!Array.isArray(list)) return null;
+    // 优先返回非 other 类型
+    let fallback = null;
     for (const item of list) {
-        if (text.includes(item.keyword)) return item;
+        if (text.includes(item.keyword)) {
+            if (item.type !== 'other') return item;
+            else fallback = item;
+        }
     }
-    return null;
+    return fallback;
 }
 
 export default async function handler(req, res) {
@@ -85,17 +106,25 @@ export default async function handler(req, res) {
         // 检查房间是否被前台接管
         const takeoverKey = `takeover:${room}`;
         const takeoverData = await redis.get(takeoverKey);
-        const isTakeover = takeoverData && (typeof takeoverData === 'object') && takeoverData.active;
+        const isTakeover = takeoverData && (
+            typeof takeoverData === 'object' ? takeoverData.active : JSON.parse(takeoverData).active
+        );
 
         if (isTakeover) {
+            // 存储客人消息，等待前台回复
             const msgKey = `pending_msg:${room}:${Date.now()}`;
-            await redis.set(msgKey, JSON.stringify({ room, sender: 'guest', text: question, time: new Date().toISOString() }));
+            await redis.set(msgKey, JSON.stringify({
+                room, sender: 'guest', text: question, time: new Date().toISOString()
+            }));
             await redis.expire(msgKey, 60 * 60 * 24);
-            takeoverData.lastGuestMsg = Date.now();
-            await redis.set(takeoverKey, JSON.stringify(takeoverData));
-            return res.status(200).json({ reply: '' });
+            // 重置自动结束计时器
+            const takeoverObj = typeof takeoverData === 'string' ? JSON.parse(takeoverData) : takeoverData;
+            takeoverObj.lastGuestMsg = Date.now();
+            await redis.set(takeoverKey, JSON.stringify(takeoverObj));
+            return res.status(200).json({ reply: '' }); // AI 不回复
         }
 
+        // 正常 AI 处理
         const knowledgeKeys = await redis.keys('knowledge:*');
         let knowledgeText = '';
         for (const key of knowledgeKeys) {
@@ -108,7 +137,7 @@ export default async function handler(req, res) {
 
         const now = new Date();
         const beijingTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }));
-        const todayStr = beijingTime.toLocaleDateString('zh-CN', { year:'numeric', month:'long', day:'numeric', weekday:'long' });
+        const todayStr = beijingTime.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
         const timeStr = beijingTime.toLocaleTimeString('zh-CN', { hour12: false });
         const hour = beijingTime.getHours();
         const lunarDay = ((beijingTime.getTime() / 86400000 + 25569) % 29.53);
@@ -130,7 +159,7 @@ export default async function handler(req, res) {
 ${tideHint}
 当客人询问赶海时间时，请根据当前日期估算退潮时段（每天退潮大约比前一天推迟40-50分钟），并告诉客人最佳赶海时间是退潮后2小时内。可以结合农历日期判断大潮小潮，并给出相应的建议。如果无法精确计算，可建议客人咨询前台获取准确的潮汐表，同时提供赶海技巧和安全提示。
 
-【核心规则】
+核心规则】
 1. 你只能回答与山予海民宿及相关旅游的问题。遇到完全无关的问题，请礼貌拒绝。
 2. 理解客人的同义表达。
 3. 如果客人问题模糊，主动追问。
@@ -147,15 +176,16 @@ ${hotelInfo}
 【补充知识库】
 ${knowledgeText || '暂无'}`;
 
+        // 关键词匹配
         const matched = await matchKeywords(question);
 
-        // ★ 处理“房客消息”类型的关键词
+        // ★ 处理“房客消息”类型
         if (matched && matched.type === 'room_msg') {
-            // 判断是否在下班时间（23:00 - 8:00）
+            // 下班时间 (23:00 - 8:00)
             if (hour >= 23 || hour < 8) {
-                // 下班时间，直接返回下班回复
                 return res.status(200).json({ reply: '我们前台的小伙伴们都下班啦！目前是下班时间，有什么问题您可以先问我我可以帮您处理的。上班时间：8:00-23:00' });
             }
+
             // 上班时间：创建通知并设置接管
             await redis.set(`notification:${Date.now()}`, JSON.stringify({
                 room: room || '未知',
@@ -166,11 +196,13 @@ ${knowledgeText || '暂无'}`;
                 time: new Date().toISOString(),
                 status: 'pending'
             }));
-            await redis.set(takeoverKey, JSON.stringify({
+
+            await redis.set(`takeover:${room}`, JSON.stringify({
                 active: true,
                 startTime: Date.now(),
                 lastGuestMsg: Date.now()
             }));
+
             return res.status(200).json({ reply: '正在通知前台的小伙伴，接通中请稍等...' });
         }
 
@@ -187,6 +219,7 @@ ${knowledgeText || '暂无'}`;
             if (instruction) systemPrompt += `\n【回复指示】请严格遵循以下要求来调整回复的语气、风格或内容：${instruction}`;
         }
 
+        // 调用火山方舟 V3.2 模型
         const response = await fetch('https://ark.cn-beijing.volces.com/api/v3/chat/completions', {
             method: 'POST',
             headers: {
@@ -194,7 +227,7 @@ ${knowledgeText || '暂无'}`;
                 'Authorization': `Bearer ${process.env.VOLCENGINE_API_KEY}`
             },
             body: JSON.stringify({
-                model: 'ep-m-20260521173515-xfdzp',
+                model: 'ep-m-20260521173515-xfdzp',   // 你的接入点
                 messages: [
                     { role: 'system', content: systemPrompt },
                     { role: 'user', content: question }
@@ -210,6 +243,7 @@ ${knowledgeText || '暂无'}`;
         if (!content) return res.status(500).json({ error: 'AI无返回' });
         let reply = content;
 
+        // 记录未回答问题
         const unsurePhrases = ['不太确定', '无法回答', '这个我不太清楚', '抱歉，我暂时无法',
             '建议您拨打前台', '您可以咨询前台', '暂时无法提供', '我也不太了解'];
         if (unsurePhrases.some(phrase => reply.includes(phrase))) {
@@ -220,10 +254,12 @@ ${knowledgeText || '暂无'}`;
             if (aiSettings.fallbackNote) reply += '\n' + aiSettings.fallbackNote;
         }
 
+        // 存储聊天记录
         const chatKey = `chat:${Date.now()}:${Math.random().toString(36).substr(2,6)}`;
         await redis.set(chatKey, JSON.stringify({ room: room || '未知', question, reply, time: new Date().toISOString() }));
         await redis.expire(chatKey, 60 * 60 * 24 * 90);
 
+        // 创建通知（排除 'other' 和 'room_msg' 类型）
         if (matched && matched.type !== 'other' && matched.type !== 'room_msg') {
             await redis.set(`notification:${Date.now()}`, JSON.stringify({
                 room: room || '未知',
