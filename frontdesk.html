@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>山予海 · 前台端</title>
     <link rel="icon" type="image/png" href="/favicon.png">
-    <!-- 使用可靠的 CDN 加载二维码库，避免内嵌代码截断导致语法错误 -->
     <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
     <style>
         body { font-family: 'PingFang SC','Microsoft YaHei',sans-serif; background: #f0f4f8; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
@@ -85,7 +84,6 @@
 <div id="qrModal" class="modal-overlay"><div class="modal-content" style="max-width:900px;width:95%;"><h3>所有房间二维码</h3><div id="qrContainer" style="display:flex;flex-wrap:wrap;justify-content:center;"></div><button onclick="document.getElementById('qrModal').style.display='none'">关闭</button></div></div>
 
 <script>
-    // 全局变量与初始化
     let dashboardData = null, currentRoom = null, takeoverRooms = [], alertTimer = null, chatActive = false;
     const PASSWORD = () => localStorage.getItem('front_password') || '';
     const BASE = '/api/frontdesk';
@@ -116,10 +114,7 @@
     async function login() {
         const pass = document.getElementById('frontPass').value;
         const res = await fetch(BASE + '?password=' + encodeURIComponent(pass));
-        if (!res.ok) {
-            document.getElementById('loginMsg').innerText = '服务器错误或密码错误';
-            return;
-        }
+        if (!res.ok) { document.getElementById('loginMsg').innerText = '服务器错误或密码错误'; return; }
         const data = await res.json();
         if (data.valid) {
             localStorage.setItem('front_password', pass);
@@ -165,7 +160,7 @@
 
     async function loadTakeoverRooms() {
         if (!PASSWORD()) return;
-        const res = await fetch(`${BASE}/chat?password=${encodeURIComponent(PASSWORD())}&action=rooms`);
+        const res = await fetch(`${BASE}?password=${encodeURIComponent(PASSWORD())}&action=takeover_rooms`);
         const data = await res.json();
         takeoverRooms = data.rooms || [];
         renderRoomList();
@@ -194,7 +189,7 @@
     }
 
     async function loadRoomMessages(room) {
-        const res = await fetch(`${BASE}/chat?password=${encodeURIComponent(PASSWORD())}&room=${room}`);
+        const res = await fetch(`${BASE}?password=${encodeURIComponent(PASSWORD())}&action=chat_messages&room=${room}`);
         const data = await res.json();
         document.getElementById('chatMessages').innerHTML = data.messages.map(m => {
             let cls = 'ai'; if (m.sender === 'guest') cls = 'guest'; else if (m.sender === 'frontdesk') cls = 'frontdesk';
@@ -205,14 +200,14 @@
     async function sendMsg() {
         const text = document.getElementById('chatInput').value.trim();
         if (!text || !currentRoom) return;
-        await fetch(`${BASE}/chat`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ password: PASSWORD(), room: currentRoom, text }) });
+        await fetch(`${BASE}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ password: PASSWORD(), action: 'send_msg', room: currentRoom, text }) });
         document.getElementById('chatInput').value = '';
         loadRoomMessages(currentRoom);
     }
 
     async function endTakeover() {
         if (!currentRoom) return;
-        await fetch(`${BASE}/chat`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ password: PASSWORD(), room: currentRoom, action: 'end_takeover' }) });
+        await fetch(`${BASE}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ password: PASSWORD(), action: 'end_takeover', room: currentRoom }) });
         document.getElementById('chatModal').classList.add('hidden'); currentRoom = null; chatActive = false;
         loadTakeoverRooms();
     }
@@ -225,7 +220,7 @@
     }
 
     async function loadNotifications(type) {
-        const res = await fetch(`${BASE}/notifications?password=${encodeURIComponent(PASSWORD())}&type=${type}`);
+        const res = await fetch(`${BASE}?password=${encodeURIComponent(PASSWORD())}&action=notifications&type=${type}`);
         const data = await res.json();
         const tbody = document.querySelector('#notifTable tbody');
         tbody.innerHTML = '';
@@ -235,7 +230,7 @@
     }
 
     async function handleNotif(id) {
-        await fetch(`${BASE}/notifications`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ password: PASSWORD(), id }) });
+        await fetch(`${BASE}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ password: PASSWORD(), action: 'notifications', id }) });
         const title = document.getElementById('listTitle').innerText;
         const map = { '清扫任务':'clean', '用车服务':'car', '订餐服务':'food', '续住需求':'extend' };
         const key = Object.entries(map).find(([k,v])=>title.includes(k))?.[1];
@@ -247,7 +242,7 @@
         const map = { '清扫任务':'clean', '用车服务':'car', '订餐服务':'food', '续住需求':'extend' };
         const key = Object.entries(map).find(([k,v])=>title.includes(k))?.[1];
         if (!key) return;
-        const res = await fetch(`${BASE}/notifications?password=${encodeURIComponent(PASSWORD())}&type=${key}&history=1`);
+        const res = await fetch(`${BASE}?password=${encodeURIComponent(PASSWORD())}&action=notifications&type=${key}&history=1`);
         const data = await res.json();
         const tbody = document.querySelector('#notifTable tbody');
         tbody.innerHTML = '';
@@ -268,9 +263,9 @@
     }
     function getTypeName(t) { const m = { usage:'今日使用', room_msg:'房客消息', clean:'清扫任务', car:'用车服务', food:'订餐服务', extend:'续住需求' }; return m[t]||''; }
 
-    // 二维码生成（使用 CDN 加载的 QRCode）
+    // 二维码
     async function showAllRoomsQR() {
-        const res = await fetch(`${BASE}/rooms?password=${encodeURIComponent(PASSWORD())}`);
+        const res = await fetch(`${BASE}?password=${encodeURIComponent(PASSWORD())}&action=rooms`);
         const data = await res.json();
         if (!data.rooms) return alert('获取失败');
         const container = document.getElementById('qrContainer');
@@ -309,7 +304,7 @@
 
     async function refreshRoomQR(id) {
         if (!confirm('刷新后旧二维码将失效，确定继续吗？')) return;
-        const res = await fetch(`${BASE}/rooms/refresh?password=${encodeURIComponent(PASSWORD())}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ id }) });
+        const res = await fetch(`${BASE}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ password: PASSWORD(), action: 'refresh_room', id }) });
         const data = await res.json();
         if (data.success) { alert('二维码已刷新！'); showAllRoomsQR(); } else alert('刷新失败：' + (data.error || '未知错误'));
     }
