@@ -463,7 +463,7 @@
                 <div class="keyword-row">
                     <input type="text" value="${item.keyword}" placeholder="关键词" onchange="updateKeyword(${index}, 'keyword', this.value)">
                     <select onchange="updateKeyword(${index}, 'type', this.value)">
-                        <option value="urgent" ${item.type === 'urgent' ? 'selected' : ''}>紧急通知</option>
+                        <option value="room_msg" ${item.type === 'room_msg' ? 'selected' : ''}>房客消息</option>
                         <option value="clean" ${item.type === 'clean' ? 'selected' : ''}>清扫任务</option>
                         <option value="car" ${item.type === 'car' ? 'selected' : ''}>用车服务</option>
                         <option value="food" ${item.type === 'food' ? 'selected' : ''}>订餐服务</option>
