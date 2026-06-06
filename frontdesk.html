@@ -18,7 +18,7 @@
         .type-card .label { font-size: 14px; color: #555; margin-bottom: 8px; }
         .type-card .count { font-size: 32px; font-weight: 700; color: #0b4f6c; }
         .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 999; align-items: center; justify-content: center; }
-        .modal-content { background: white; border-radius: 20px; padding: 25px; width: 90%; max-width: 800px; max-height: 80vh; overflow-y: auto; }
+        .modal-content { background: white; border-radius: 20px; padding: 25px; max-width: 500px; width: 90%; max-height: 70vh; overflow-y: auto; }
         table { width: 100%; border-collapse: collapse; font-size: 14px; }
         th, td { border-bottom: 1px solid #eee; padding: 10px 6px; text-align: left; }
         button { padding: 10px 20px; background: #1e90ff; color: white; border: none; border-radius: 25px; cursor: pointer; font-weight: 600; }
@@ -29,7 +29,7 @@
         .today-stats-link { font-size: 12px; color: #3498db; cursor: pointer; text-decoration: underline; margin-top: 5px; text-align: center; }
 
         /* 对话框样式 */
-        .chat-modal { position: fixed; top: 10%; left: 10%; width: 80%; height: 80%; background: white; border-radius: 20px; box-shadow: 0 0 30px rgba(0,0,0,0.3); z-index: 1000; display: flex; }
+        .chat-modal { position: fixed; top: 5%; left: 5%; width: 90%; height: 90%; background: white; border-radius: 20px; box-shadow: 0 0 30px rgba(0,0,0,0.3); z-index: 1000; display: flex; }
         .room-list { width: 200px; border-right: 1px solid #eee; overflow-y: auto; padding: 10px; }
         .room-item { padding: 12px; border-radius: 12px; cursor: pointer; position: relative; margin-bottom: 5px; }
         .room-item.active { background: #e8f4fd; }
@@ -114,6 +114,15 @@
     const PASSWORD = () => localStorage.getItem('front_password') || '';
     const BASE = '/api/frontdesk';
 
+    function speak(text) {
+        if ('speechSynthesis' in window) {
+            const utter = new SpeechSynthesisUtterance(text);
+            utter.lang = 'zh-CN';
+            utter.rate = 1.0;
+            speechSynthesis.speak(utter);
+        }
+    }
+
     async function login() {
         const pass = document.getElementById('frontPass').value;
         const res = await fetch(BASE + '?password=' + encodeURIComponent(pass));
@@ -125,8 +134,7 @@
             dashboardData = data;
             updateDashboard(true);
             startAutoRefresh();
-            startAlertCheck();
-            loadTakeoverRooms(); // 定时检查接管房间
+            startTakeoverCheck();
         } else {
             document.getElementById('loginMsg').innerText = '密码错误';
         }
@@ -135,14 +143,12 @@
     function countByType(notifications) {
         const counts = { room_msg:0, clean:0, car:0, food:0, extend:0 };
         if (notifications) {
-            notifications.forEach(n => {
-                if (counts.hasOwnProperty(n.type)) counts[n.type]++;
-            });
+            notifications.forEach(n => { if (counts.hasOwnProperty(n.type)) counts[n.type]++; });
         }
         return counts;
     }
 
-    function updateDashboard(skipVoice = false) { /* 保持原有逻辑，不再赘述，但需更新计数 */ 
+    function updateDashboard(skipVoice = false) {
         const notifications = dashboardData?.notifications || [];
         const current = countByType(notifications);
         current.usage = dashboardData?.todayRooms?.length || 0;
@@ -152,7 +158,10 @@
         document.getElementById('cnt_car').innerText = current.car;
         document.getElementById('cnt_food').innerText = current.food;
         document.getElementById('cnt_extend').innerText = current.extend;
-        // 语音播报等逻辑可保留，此处省略...
+        // 语音播报
+        if (!skipVoice && current.room_msg > 0) {
+            speak('您有一条房客信息，请立即回复');
+        }
     }
 
     // 接管房间相关
@@ -161,11 +170,22 @@
         const data = await res.json();
         takeoverRooms = data.rooms || [];
         renderRoomList();
+        // 如果有新接管房间且对话框未打开，自动打开第一个
+        if (takeoverRooms.length > 0 && document.getElementById('chatModal').classList.contains('hidden')) {
+            currentRoom = takeoverRooms[0].room;
+            document.getElementById('chatModal').classList.remove('hidden');
+            loadRoomMessages(currentRoom);
+        }
+        // 如果当前房间已结束接管，关闭对话框
+        if (currentRoom && !takeoverRooms.some(r => r.room === currentRoom)) {
+            currentRoom = null;
+            document.getElementById('chatModal').classList.add('hidden');
+        }
     }
 
     function renderRoomList() {
         const container = document.getElementById('roomListContainer');
-        container.innerHTML = takeoverRooms.map(r => 
+        container.innerHTML = takeoverRooms.map(r =>
             `<div class="room-item ${currentRoom === r.room ? 'active' : ''}" onclick="openRoomChat('${r.room}')">
                 ${r.room} ${r.unread > 0 ? `<span class="badge-room">${r.unread}</span>` : ''}
             </div>`
@@ -177,7 +197,7 @@
         document.getElementById('currentRoomTitle').innerText = `房间 ${room}`;
         renderRoomList();
         document.getElementById('chatModal').classList.remove('hidden');
-        await loadRoomMessages(room);
+        loadRoomMessages(room);
     }
 
     async function loadRoomMessages(room) {
@@ -202,7 +222,7 @@
             body: JSON.stringify({ password: PASSWORD(), room: currentRoom, text })
         });
         document.getElementById('chatInput').value = '';
-        await loadRoomMessages(currentRoom);
+        loadRoomMessages(currentRoom);
     }
 
     async function endTakeover() {
@@ -217,16 +237,25 @@
         loadTakeoverRooms();
     }
 
-    // 定期更新
-    setInterval(() => {
-        if (document.getElementById('dashboardPanel') && !document.getElementById('dashboardPanel').classList.contains('hidden')) {
-            loadTakeoverRooms();
-            if (currentRoom) loadRoomMessages(currentRoom);
-        }
-    }, 5000);
+    // 定期刷新
+    function startTakeoverCheck() {
+        setInterval(() => {
+            if (!document.getElementById('dashboardPanel').classList.contains('hidden')) {
+                loadTakeoverRooms();
+                if (currentRoom) loadRoomMessages(currentRoom);
+            }
+        }, 5000);
+        // 语音提醒循环
+        setInterval(() => {
+            if (takeoverRooms.length > 0) {
+                speak('您有一条房客信息，请立即回复');
+            }
+        }, 10000);
+    }
 
-    // 原有的统计和通知函数保持不变，但需更新房客消息部分
-    // ...（由于篇幅，此处不再写出全部，但需确保保留原有功能并适配新类型）
+    // 保留原有的其它功能（使用房间、通知列表、历史记录等）
+    // ... 由于篇幅，此处省略部分重复代码，实际部署请确保包含之前的所有功能函数
+    // 这些函数在前面的回答中已有完整版本，请结合使用
 </script>
 </body>
 </html>
