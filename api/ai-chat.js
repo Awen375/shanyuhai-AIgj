@@ -84,15 +84,24 @@ async function matchKeywords(text) {
     if (!keywordsData) return null;
     const list = typeof keywordsData === 'string' ? JSON.parse(keywordsData) : keywordsData;
     if (!Array.isArray(list)) return null;
-    // 优先返回非 other 类型
-    let fallback = null;
+    let matchedOther = null;
     for (const item of list) {
         if (text.includes(item.keyword)) {
-            if (item.type !== 'other') return item;
-            else fallback = item;
+            if (item.type === 'room_msg') return item;
+            if (item.type === 'other') {
+                matchedOther = item;
+                continue;
+            }
+            return item;
         }
     }
-    return fallback;
+    return matchedOther;
+}
+
+// 检查前台是否在线（心跳键是否存在）
+async function isFrontdeskOnline() {
+    const heartbeat = await redis.get('heartbeat:frontdesk');
+    return !!heartbeat;
 }
 
 export default async function handler(req, res) {
@@ -103,25 +112,15 @@ export default async function handler(req, res) {
     try {
         const aiSettings = await getAISettings();
 
-        // 检查房间是否被前台接管
-        const takeoverKey = `takeover:${room}`;
-        const takeoverData = await redis.get(takeoverKey);
-        const isTakeover = takeoverData && (
-            typeof takeoverData === 'object' ? takeoverData.active : JSON.parse(takeoverData).active
-        );
+        // 接管状态检查
+        const takeoverData = await redis.get(`takeover:${room}`);
+        const isTakeover = takeoverData && (typeof takeoverData === 'object' ? takeoverData.active : JSON.parse(takeoverData).active);
 
         if (isTakeover) {
-            // 存储客人消息，等待前台回复
-            const msgKey = `pending_msg:${room}:${Date.now()}`;
-            await redis.set(msgKey, JSON.stringify({
+            await redis.set(`pending_msg:${room}:${Date.now()}`, JSON.stringify({
                 room, sender: 'guest', text: question, time: new Date().toISOString()
             }));
-            await redis.expire(msgKey, 60 * 60 * 24);
-            // 重置自动结束计时器
-            const takeoverObj = typeof takeoverData === 'string' ? JSON.parse(takeoverData) : takeoverData;
-            takeoverObj.lastGuestMsg = Date.now();
-            await redis.set(takeoverKey, JSON.stringify(takeoverObj));
-            return res.status(200).json({ reply: '' }); // AI 不回复
+            return res.status(200).json({ reply: '' });
         }
 
         // 正常 AI 处理
@@ -159,7 +158,7 @@ export default async function handler(req, res) {
 ${tideHint}
 当客人询问赶海时间时，请根据当前日期估算退潮时段（每天退潮大约比前一天推迟40-50分钟），并告诉客人最佳赶海时间是退潮后2小时内。可以结合农历日期判断大潮小潮，并给出相应的建议。如果无法精确计算，可建议客人咨询前台获取准确的潮汐表，同时提供赶海技巧和安全提示。
 
-核心规则】
+【核心规则】
 1. 你只能回答与山予海民宿及相关旅游的问题。遇到完全无关的问题，请礼貌拒绝。
 2. 理解客人的同义表达。
 3. 如果客人问题模糊，主动追问。
@@ -179,31 +178,39 @@ ${knowledgeText || '暂无'}`;
         // 关键词匹配
         const matched = await matchKeywords(question);
 
-        // ★ 处理“房客消息”类型
+        // ★ 处理“房客消息”类型（新增在线状态检测）
         if (matched && matched.type === 'room_msg') {
-            // 下班时间 (23:00 - 8:00)
+            const online = await isFrontdeskOnline();
+            // 下班时间 (23:00 - 8:00) 且前台不在线
             if (hour >= 23 || hour < 8) {
-                return res.status(200).json({ reply: '我们前台的小伙伴们都下班啦！目前是下班时间，有什么问题您可以先问我我可以帮您处理的。上班时间：8:00-23:00' });
+                if (online) {
+                    // 尽管下班，但前台在线，允许接管
+                    await redis.set(`notification:${Date.now()}`, JSON.stringify({
+                        room: room || '未知', question, reply: '', keyword: matched.keyword,
+                        type: 'room_msg', time: new Date().toISOString(), status: 'pending'
+                    }));
+                    await redis.set(`takeover:${room}`, JSON.stringify({
+                        active: true, startTime: Date.now(), lastGuestMsg: Date.now()
+                    }));
+                    return res.status(200).json({ reply: '正在通知前台的小伙伴，接通中请稍等...' });
+                } else {
+                    return res.status(200).json({ reply: '我们前台的小伙伴们都下班啦！目前是下班时间，有什么问题您可以先问我我可以帮您处理的。上班时间：8:00-23:00' });
+                }
+            } else {
+                // 上班时间
+                if (online) {
+                    await redis.set(`notification:${Date.now()}`, JSON.stringify({
+                        room: room || '未知', question, reply: '', keyword: matched.keyword,
+                        type: 'room_msg', time: new Date().toISOString(), status: 'pending'
+                    }));
+                    await redis.set(`takeover:${room}`, JSON.stringify({
+                        active: true, startTime: Date.now(), lastGuestMsg: Date.now()
+                    }));
+                    return res.status(200).json({ reply: '正在通知前台的小伙伴，接通中请稍等...' });
+                } else {
+                    return res.status(200).json({ reply: '目前前台小伙伴不在线，您可以先留言，我们稍后回复您。' });
+                }
             }
-
-            // 上班时间：创建通知并设置接管
-            await redis.set(`notification:${Date.now()}`, JSON.stringify({
-                room: room || '未知',
-                question,
-                reply: '',
-                keyword: matched.keyword,
-                type: 'room_msg',
-                time: new Date().toISOString(),
-                status: 'pending'
-            }));
-
-            await redis.set(`takeover:${room}`, JSON.stringify({
-                active: true,
-                startTime: Date.now(),
-                lastGuestMsg: Date.now()
-            }));
-
-            return res.status(200).json({ reply: '正在通知前台的小伙伴，接通中请稍等...' });
         }
 
         // 其他类型关键词的回复扩展
@@ -219,7 +226,7 @@ ${knowledgeText || '暂无'}`;
             if (instruction) systemPrompt += `\n【回复指示】请严格遵循以下要求来调整回复的语气、风格或内容：${instruction}`;
         }
 
-        // 调用火山方舟 V3.2 模型
+        // 调用火山方舟 V3.2
         const response = await fetch('https://ark.cn-beijing.volces.com/api/v3/chat/completions', {
             method: 'POST',
             headers: {
@@ -227,7 +234,7 @@ ${knowledgeText || '暂无'}`;
                 'Authorization': `Bearer ${process.env.VOLCENGINE_API_KEY}`
             },
             body: JSON.stringify({
-                model: 'ep-m-20260521173515-xfdzp',   // 你的接入点
+                model: 'ep-m-20260521173515-xfdzp',
                 messages: [
                     { role: 'system', content: systemPrompt },
                     { role: 'user', content: question }
