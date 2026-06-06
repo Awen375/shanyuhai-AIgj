@@ -131,6 +131,7 @@
 
 <script>
     let dashboardData = null, currentRoom = null, takeoverRooms = [], alertTimer = null, chatActive = false;
+    let currentGroupId = '';  // ★ 新增：当前接管对话的 groupId
     const PASSWORD = () => localStorage.getItem('front_password') || '';
     const BASE = '/api/frontdesk';
 
@@ -236,7 +237,9 @@
             if (silent) return;
             if (takeoverRooms.length > 0 && !chatActive) {
                 if (document.getElementById('chatModal').classList.contains('hidden')) {
-                    currentRoom = takeoverRooms[0].room;
+                    const first = takeoverRooms[0];
+                    currentRoom = first.room;
+                    currentGroupId = first.groupId || '';  // ★ 保存 groupId
                     document.getElementById('chatModal').classList.remove('hidden');
                     loadRoomMessages(currentRoom);
                     chatActive = true; stopAlert();
@@ -244,6 +247,7 @@
             }
             if (currentRoom && !takeoverRooms.some(r => r.room === currentRoom)) {
                 currentRoom = null;
+                currentGroupId = '';
             }
         } catch (err) {}
     }
@@ -255,15 +259,17 @@
             return;
         }
         container.innerHTML = takeoverRooms.map(r => `
-            <div class="room-item ${currentRoom===r.room?'active':''}" onclick="openRoomChat('${r.room}')">
+            <div class="room-item ${currentRoom===r.room?'active':''}" onclick="openRoomChat('${r.room}', '${r.groupId || ''}')">
                 ${r.room} ${r.unread>0 ? `<span class="badge-room">${r.unread}</span>` : ''}
             </div>
         `).join('');
     }
 
-    async function openRoomChat(room) {
+    // ★ 修改：打开房间时传递 groupId
+    async function openRoomChat(room, groupId) {
         currentRoom = room;
-        document.getElementById('currentRoomTitle').innerText = `房间 ${room}`;
+        currentGroupId = groupId || '';
+        document.getElementById('currentRoomTitle').innerText = `房间 ${room}${groupId ? ' (群组)' : ''}`;
         renderRoomList();
         document.getElementById('chatModal').classList.remove('hidden');
         loadRoomMessages(room);
@@ -271,7 +277,10 @@
     }
 
     async function loadRoomMessages(room) {
-        const res = await fetch(`${BASE}?password=${encodeURIComponent(PASSWORD())}&action=chat_messages&room=${room}`);
+        // 加载时也需要携带 groupId 以查看隔离消息
+        let url = `${BASE}?password=${encodeURIComponent(PASSWORD())}&action=chat_messages&room=${room}`;
+        if (currentGroupId) url += `&groupId=${encodeURIComponent(currentGroupId)}`;
+        const res = await fetch(url);
         const data = await res.json();
         document.getElementById('chatMessages').innerHTML = data.messages.map(m => {
             let cls = m.sender === 'guest' ? 'guest' : (m.sender === 'frontdesk' ? 'frontdesk' : 'ai');
@@ -280,14 +289,14 @@
         document.getElementById('chatMessages').scrollTop = document.getElementById('chatMessages').scrollHeight;
     }
 
-    // ★ 发送消息（携带 groupId，现阶段传空字符串，表示对所有同房间 guest 可见）
+    // ★ 发送消息时带上 currentGroupId
     async function sendMsg() {
         const text = document.getElementById('chatInput').value.trim();
         if (!text || !currentRoom) { alert('请选择左侧已触发的客房'); return; }
         await fetch(`${BASE}`, { 
             method:'POST', 
             headers:{'Content-Type':'application/json'}, 
-            body: JSON.stringify({ password: PASSWORD(), action: 'send_msg', room: currentRoom, text, groupId: '' }) 
+            body: JSON.stringify({ password: PASSWORD(), action: 'send_msg', room: currentRoom, text, groupId: currentGroupId }) 
         });
         document.getElementById('chatInput').value = '';
         loadRoomMessages(currentRoom);
@@ -301,9 +310,11 @@
         await fetch(`${BASE}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ password: PASSWORD(), action: 'end_takeover', room: currentRoom }) });
         takeoverRooms = takeoverRooms.filter(r => r.room !== currentRoom);
         currentRoom = null;
+        currentGroupId = '';
         renderRoomList();
         if (takeoverRooms.length > 0) {
-            openRoomChat(takeoverRooms[0].room);
+            const next = takeoverRooms[0];
+            openRoomChat(next.room, next.groupId || '');
         } else {
             document.getElementById('chatModal').classList.add('hidden');
             chatActive = false;
@@ -395,7 +406,6 @@
         document.getElementById('timeQRResult').innerHTML = '';
     }
 
-    // ★ 生成时效二维码，带唯一 groupId
     async function generateTimeQR() {
         const roomId = document.getElementById('timeRoomId').value.trim();
         const checkin = document.getElementById('checkinTime').value;
@@ -411,7 +421,6 @@
         const checkinStr = formatTime(checkin);
         const checkoutStr = formatTime(checkout);
 
-        // 生成唯一群组 ID
         const groupId = `${Date.now()}-${Math.random().toString(36).substr(2,8)}`;
 
         const url = `${location.origin}/room-chat.html?room=${room.id}&token=${room.token}&checkin=${checkinStr}&checkout=${checkoutStr}&groupId=${encodeURIComponent(groupId)}`;
