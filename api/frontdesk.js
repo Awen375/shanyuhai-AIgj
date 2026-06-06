@@ -19,9 +19,8 @@ export default async function handler(req, res) {
         action = url.searchParams.get('action') || 'main';
     }
 
-    // 心跳接口无需密码验证（或者可以简单验证）
+    // ★ 心跳接口（无需密码验证）
     if (action === 'heartbeat') {
-        // 记录心跳，设置过期时间60秒（前台端每30秒发送一次，保证在线）
         await redis.set('heartbeat:frontdesk', '1', { ex: 60 });
         return res.status(200).json({ success: true });
     }
