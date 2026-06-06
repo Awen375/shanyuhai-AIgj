@@ -235,7 +235,7 @@
         const data = await res.json();
         document.getElementById('chatMessages').innerHTML = data.messages.map(m => {
             let cls = m.sender === 'guest' ? 'guest' : (m.sender === 'frontdesk' ? 'frontdesk' : 'ai');
-            return `<div class="msg ${cls}"><div class="bubble">${m.text || m.reply || m.question}</div></div>`;
+            return `<div class="msg ${cls}"><div class="bubble">${m.text}</div></div>`;
         }).join('');
         document.getElementById('chatMessages').scrollTop = document.getElementById('chatMessages').scrollHeight;
     }
@@ -243,10 +243,14 @@
     async function sendMsg() {
         const text = document.getElementById('chatInput').value.trim();
         if (!text || !currentRoom) { alert('请选择左侧已触发的客房'); return; }
-        // 发送前台消息
-        await fetch(`${BASE}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ password: PASSWORD(), action: 'send_msg', room: currentRoom, text }) });
-        // 同步写入公开聊天记录（客人端可见）
-        await fetch(`${BASE}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ password: PASSWORD(), action: 'send_msg_public', room: currentRoom, text }) });
+        
+        // 只发送一次，写入 chat:* 即可
+        await fetch(`${BASE}`, { 
+            method:'POST', 
+            headers:{'Content-Type':'application/json'}, 
+            body: JSON.stringify({ password: PASSWORD(), action: 'send_msg', room: currentRoom, text }) 
+        });
+        
         document.getElementById('chatInput').value = '';
         loadRoomMessages(currentRoom);
     }
