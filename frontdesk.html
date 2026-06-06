@@ -40,7 +40,7 @@
         .chat-header { padding: 15px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
         .messages { flex: 1; overflow-y: auto; padding: 15px; }
         .msg { margin-bottom: 10px; }
-        /* ★ 互换位置：客人消息左对齐，前台消息右对齐 */
+        /* 互换位置：客人消息左对齐，前台消息右对齐 */
         .msg.guest { text-align: left; }
         .msg.frontdesk { text-align: right; }
         .msg.ai { text-align: left; }
@@ -319,7 +319,7 @@
         document.getElementById('chatMessages').scrollTop = document.getElementById('chatMessages').scrollHeight;
     }
 
-    // ★ 发送消息（客人消息左，前台消息右）
+    // 发送消息
     async function sendMsg() {
         const text = document.getElementById('chatInput').value.trim();
         if (!text || !currentRoom) { alert('请选择左侧已触发的客房'); return; }
@@ -406,9 +406,180 @@
         renderQuickReplies();
     }
 
-    // 其余功能（通知、二维码等）与原代码相同，此处省略，请保留原始完整代码中的对应部分。
-    // 在实际替换时，请务必将原有的 openNotifyList, loadNotifications, handleNotif, showHistory, 
-    // showAllRoomsQR, generateQR, generateTimeQR 等函数完整保留。
+    // ===== 通知处理 =====
+    async function openNotifyList(type) {
+        document.getElementById('listTitle').innerText = getTypeName(type) + ' 待处理列表';
+        document.getElementById('historyBtn').style.display = 'inline-block';
+        await loadNotifications(type);
+        document.getElementById('listModal').style.display = 'flex';
+    }
+
+    async function loadNotifications(type) {
+        const res = await fetch(`${BASE}?password=${encodeURIComponent(PASSWORD())}&action=notifications&type=${type}`);
+        const data = await res.json();
+        const tbody = document.querySelector('#notifTable tbody');
+        tbody.innerHTML = '';
+        if (data.notifications && data.notifications.length) {
+            data.notifications.forEach(n => tbody.innerHTML += `<tr><td>${n.room}</td><td>${n.question}</td><td><button onclick="handleNotif('${n.id}')" class="success">处理完成</button></td></tr>`);
+        } else tbody.innerHTML = '<tr><td colspan="3">暂无数据</td></tr>';
+    }
+
+    async function handleNotif(id) {
+        await fetch(`${BASE}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ password: PASSWORD(), action: 'notifications', id }) });
+        const title = document.getElementById('listTitle').innerText;
+        const map = { '清扫任务':'clean', '用车服务':'car', '订餐服务':'food', '续住需求':'extend' };
+        const key = Object.entries(map).find(([k,v])=>title.includes(k))?.[1];
+        if (key) { await loadNotifications(key); const r = await fetch(BASE + '?password=' + encodeURIComponent(PASSWORD())); dashboardData = await r.json(); updateDashboard(); }
+    }
+
+    async function showHistory() {
+        const title = document.getElementById('listTitle').innerText;
+        const map = { '清扫任务':'clean', '用车服务':'car', '订餐服务':'food', '续住需求':'extend' };
+        const key = Object.entries(map).find(([k,v])=>title.includes(k))?.[1];
+        if (!key) return;
+        const res = await fetch(`${BASE}?password=${encodeURIComponent(PASSWORD())}&action=notifications&type=${key}&history=1`);
+        const data = await res.json();
+        const tbody = document.querySelector('#notifTable tbody');
+        tbody.innerHTML = '';
+        if (data.history) data.history.forEach(n => tbody.innerHTML += `<tr><td>${n.room}</td><td>${n.question}</td><td>${new Date(n.resolvedAt).toLocaleString()}</td></tr>`);
+        else tbody.innerHTML = '<tr><td colspan="3">暂无记录</td></tr>';
+    }
+
+    function openTodayStats() { alert('今日处理统计'); }
+    function openUsageList() {
+        const rooms = dashboardData?.todayRooms || [];
+        document.getElementById('listTitle').innerText = '今日使用房间';
+        document.getElementById('historyBtn').style.display = 'none';
+        const tbody = document.querySelector('#notifTable tbody');
+        tbody.innerHTML = '';
+        if (rooms.length > 0) rooms.forEach(r => tbody.innerHTML += `<tr><td>${r}</td></tr>`);
+        else tbody.innerHTML = '<tr><td>暂无</td></tr>';
+        document.getElementById('listModal').style.display = 'flex';
+    }
+    function getTypeName(t) { const m = { usage:'今日使用', room_msg:'房客消息', clean:'清扫任务', car:'用车服务', food:'订餐服务', extend:'续住需求' }; return m[t]||''; }
+
+    // ===== 二维码管理 =====
+    async function showAllRoomsQR() {
+        const res = await fetch(`${BASE}?password=${encodeURIComponent(PASSWORD())}&action=rooms`);
+        const data = await res.json();
+        if (!data.rooms) return alert('获取房间列表失败');
+        const container = document.getElementById('qrContainer');
+        container.innerHTML = '';
+        data.rooms.forEach(room => generateQR(room));
+        document.getElementById('qrModal').style.display = 'flex';
+    }
+
+    function generateQR(room) {
+        const url = `${location.origin}/room-chat.html?room=${room.id}&token=${room.token}`;
+        const existing = document.querySelector(`.qr-room-item[data-room="${room.id}"]`);
+        if (existing) existing.remove();
+
+        const div = document.createElement('div');
+        div.className = 'qr-room-item';
+        div.setAttribute('data-room', room.id);
+        div.innerHTML = `<strong>${room.name||room.id}</strong>`;
+        const img = document.createElement('img');
+        img.src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(url)}&rnd=${Math.random()}`;
+        img.width = 200; img.height = 200;
+        img.onerror = () => { img.src = ''; div.innerHTML += '<p style="color:red;">二维码加载失败</p>'; };
+        div.appendChild(img);
+        div.innerHTML += `<div class="qr-btns"><button class="success" onclick="saveQR('${room.id}')">💾保存</button><button class="warning" onclick="refreshRoomQR('${room.id}')">🔄刷新</button></div>`;
+        document.getElementById('qrContainer').appendChild(div);
+    }
+
+    function showTimeQRForm() {
+        document.getElementById('timeQRForm').style.display = 'block';
+        document.getElementById('timeQRResult').innerHTML = '';
+    }
+
+    async function generateTimeQR() {
+        const roomId = document.getElementById('timeRoomId').value.trim();
+        const checkin = document.getElementById('checkinTime').value;
+        const checkout = document.getElementById('checkoutTime').value;
+        if (!roomId || !checkin || !checkout) return alert('请填写完整信息');
+
+        const roomRes = await fetch(`${BASE}?password=${encodeURIComponent(PASSWORD())}&action=rooms`);
+        const roomData = await roomRes.json();
+        const room = roomData.rooms?.find(r => r.id === roomId);
+        if (!room) return alert('房间不存在，请先在后台创建房间');
+
+        const formatTime = (dt) => dt.replace(/[-:]/g, '').replace('T', '').substring(0,12);
+        const checkinStr = formatTime(checkin);
+        const checkoutStr = formatTime(checkout);
+
+        const groupId = `${Date.now()}-${Math.random().toString(36).substr(2,8)}`;
+
+        const url = `${location.origin}/room-chat.html?room=${room.id}&token=${room.token}&checkin=${checkinStr}&checkout=${checkoutStr}&groupId=${encodeURIComponent(groupId)}`;
+        const div = document.createElement('div');
+        div.className = 'qr-room-item';
+        div.innerHTML = `<strong>时效二维码（${room.name||room.id}）<br>${checkin.replace('T',' ')} ~ ${checkout.replace('T',' ')}</strong>`;
+        const img = document.createElement('img');
+        img.src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(url)}&rnd=${Math.random()}`;
+        img.width = 200; img.height = 200;
+        img.onerror = () => { img.src = ''; div.innerHTML += '<p style="color:red;">二维码加载失败</p>'; };
+        div.appendChild(img);
+        const delBtn = document.createElement('button');
+        delBtn.className = 'delete-btn';
+        delBtn.innerHTML = '×';
+        delBtn.title = '删除此二维码';
+        delBtn.onclick = function() { div.remove(); };
+        div.appendChild(delBtn);
+        document.getElementById('timeQRResult').appendChild(div);
+    }
+
+    function saveQR(id) {
+        const items = document.querySelectorAll('.qr-room-item');
+        for (let item of items) {
+            if (item.querySelector('strong')?.innerText.includes(id)) {
+                const img = item.querySelector('img');
+                if (img && img.src) {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    const ctx = canvas.getContext('2d');
+                    const image = new Image();
+                    image.crossOrigin = 'Anonymous';
+                    image.src = img.src;
+                    image.onload = () => {
+                        ctx.drawImage(image, 0, 0);
+                        const a = document.createElement('a');
+                        a.download = `房间${id}.png`;
+                        a.href = canvas.toDataURL();
+                        a.click();
+                    };
+                    image.onerror = () => {
+                        window.open(img.src, '_blank');
+                    };
+                }
+                break;
+            }
+        }
+    }
+
+    async function refreshRoomQR(id) {
+        if (!confirm('刷新后旧二维码将失效，确定继续吗？')) return;
+        const res = await fetch(`${BASE}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ password: PASSWORD(), action: 'refresh_room', id }) });
+        const data = await res.json();
+        if (data.success) { alert('二维码已刷新！'); showAllRoomsQR(); } else alert('刷新失败：' + (data.error || '未知错误'));
+    }
+
+    function startTakeoverCheck() {
+        setInterval(() => {
+            if (!document.getElementById('dashboardPanel').classList.contains('hidden')) {
+                loadTakeoverRooms();
+                if (currentRoom) loadRoomMessages(currentRoom);
+            }
+        }, 5000);
+    }
+    function startAutoRefresh() {
+        setInterval(async () => {
+            if (document.getElementById('dashboardPanel').classList.contains('hidden')) return;
+            const r = await fetch(BASE + '?password=' + encodeURIComponent(PASSWORD()));
+            dashboardData = await r.json();
+            updateDashboard();
+        }, 30000);
+    }
+    window.addEventListener('beforeunload', stopAlert);
 </script>
 </body>
 </html>
