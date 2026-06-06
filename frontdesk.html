@@ -170,9 +170,8 @@
         else if (cur.room_msg === 0) stopAlert();
     }
 
-    // 点击“房客消息”卡片：先刷新接管房间，如果有则弹对话框，否则弹普通通知列表
     async function openRoomMsgList() {
-        await loadTakeoverRooms(true); // 仅刷新列表，不自动弹窗
+        await loadTakeoverRooms(true);
         if (takeoverRooms.length > 0) {
             document.getElementById('chatModal').classList.remove('hidden');
             if (!currentRoom || !takeoverRooms.some(r => r.room === currentRoom)) {
@@ -218,17 +217,14 @@
         renderRoomList();
         document.getElementById('chatModal').classList.remove('hidden');
         loadRoomMessages(room);
-        chatActive = true;
-        stopAlert();
+        chatActive = true; stopAlert();
     }
 
     async function loadRoomMessages(room) {
         const res = await fetch(`${BASE}?password=${encodeURIComponent(PASSWORD())}&action=chat_messages&room=${room}`);
         const data = await res.json();
         document.getElementById('chatMessages').innerHTML = data.messages.map(m => {
-            let cls = 'ai';
-            if (m.sender === 'guest') cls = 'guest';
-            else if (m.sender === 'frontdesk') cls = 'frontdesk';
+            let cls = 'ai'; if (m.sender === 'guest') cls = 'guest'; else if (m.sender === 'frontdesk') cls = 'frontdesk';
             return `<div class="msg ${cls}"><div class="bubble">${m.text}</div></div>`;
         }).join('');
         document.getElementById('chatMessages').scrollTop = document.getElementById('chatMessages').scrollHeight;
@@ -236,28 +232,21 @@
 
     async function sendMsg() {
         const text = document.getElementById('chatInput').value.trim();
-        if (!text || !currentRoom) {
-            alert('请选择左侧已触发的客房');
-            return;
-        }
+        if (!text || !currentRoom) { alert('请选择左侧已触发的客房'); return; }
         await fetch(`${BASE}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ password: PASSWORD(), action: 'send_msg', room: currentRoom, text }) });
         document.getElementById('chatInput').value = '';
         loadRoomMessages(currentRoom);
     }
 
-    function closeChatModal() {
-        document.getElementById('chatModal').classList.add('hidden');
-    }
+    function closeChatModal() { document.getElementById('chatModal').classList.add('hidden'); }
 
     async function endTakeover() {
         if (!currentRoom) return;
-        if (!confirm(`确定结束房间 ${currentRoom} 的对话吗？该房间将恢复AI管家服务。`)) return;
+        if (!confirm(`确定结束房间 ${currentRoom} 的对话吗？`)) return;
         await fetch(`${BASE}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ password: PASSWORD(), action: 'end_takeover', room: currentRoom }) });
-        // 移除已结束的房间
         takeoverRooms = takeoverRooms.filter(r => r.room !== currentRoom);
         currentRoom = null;
         renderRoomList();
-        // 如果还有其他接管房间，保持对话框打开并选中第一个
         if (takeoverRooms.length > 0) {
             openRoomChat(takeoverRooms[0].room);
         } else {
@@ -266,7 +255,7 @@
         }
     }
 
-    // 普通通知功能
+    // 普通通知
     async function openNotifyList(type) {
         document.getElementById('listTitle').innerText = getTypeName(type) + ' 待处理列表';
         document.getElementById('historyBtn').style.display = 'inline-block';
@@ -325,26 +314,33 @@
         if (!data.rooms) return alert('获取房间列表失败');
         const container = document.getElementById('qrContainer');
         container.innerHTML = '';
-        const logo = new Image(); logo.src = '/logo.jpg';
-        logo.onload = () => data.rooms.forEach(room => generateQR(room, logo));
-        logo.onerror = () => data.rooms.forEach(room => generateQR(room, null));
+        const logo = new Image();
+        logo.crossOrigin = 'anonymous';
+        logo.src = '/logo.jpg';
+        logo.onerror = () => { data.rooms.forEach(room => generateQR(room, null)); };
+        logo.onload = () => { data.rooms.forEach(room => generateQR(room, logo)); };
         setTimeout(() => { if (logo.complete && logo.naturalWidth === 0) data.rooms.forEach(room => generateQR(room, null)); }, 3000);
         document.getElementById('qrModal').style.display = 'flex';
     }
 
     function generateQR(room, logo) {
         const url = `${location.origin}/room-chat.html?room=${room.id}&token=${room.token}`;
-        const canvas = document.createElement('canvas'); canvas.width = 300; canvas.height = 300;
+        const canvas = document.createElement('canvas');
+        canvas.width = 300; canvas.height = 300;
         QRCode.toCanvas(canvas, url, { width: 300, margin: 1, errorCorrectionLevel: 'H' }, (error) => {
             if (error) return;
             const ctx = canvas.getContext('2d');
             if (logo) {
-                const size = 70, x = (canvas.width-size)/2, y = (canvas.height-size)/2;
-                ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(canvas.width/2, canvas.height/2, size/2+4, 0, 2*Math.PI); ctx.fill();
+                const size = 70, x = (canvas.width - size) / 2, y = (canvas.height - size) / 2;
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.arc(canvas.width / 2, canvas.height / 2, size / 2 + 4, 0, 2 * Math.PI);
+                ctx.fill();
                 ctx.drawImage(logo, x, y, size, size);
             }
-            const div = document.createElement('div'); div.className = 'qr-room-item';
-            div.innerHTML = `<strong>${room.name||room.id}</strong>`;
+            const div = document.createElement('div');
+            div.className = 'qr-room-item';
+            div.innerHTML = `<strong>${room.name || room.id}</strong>`;
             div.appendChild(canvas);
             div.innerHTML += `<div class="qr-btns"><button class="success" onclick="saveQR('${room.id}')">💾保存</button><button class="warning" onclick="refreshRoomQR('${room.id}')">🔄刷新</button></div>`;
             document.getElementById('qrContainer').appendChild(div);
@@ -356,7 +352,12 @@
         for (let item of items) {
             if (item.querySelector('strong')?.innerText.includes(id)) {
                 const canvas = item.querySelector('canvas');
-                if (canvas) { const a = document.createElement('a'); a.download = `房间${id}.png`; a.href = canvas.toDataURL(); a.click(); }
+                if (canvas) {
+                    const a = document.createElement('a');
+                    a.download = `房间${id}.png`;
+                    a.href = canvas.toDataURL();
+                    a.click();
+                }
                 break;
             }
         }
