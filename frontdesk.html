@@ -175,6 +175,7 @@
         if (alertTimer) clearInterval(alertTimer);
     });
 
+    // 语音提醒
     function speak(text) {
         if ('speechSynthesis' in window) {
             const utter = new SpeechSynthesisUtterance(text); utter.lang = 'zh-CN'; utter.rate = 1.0;
@@ -272,7 +273,7 @@
                     currentRoom = first.room;
                     currentGroupId = first.groupId || '';
                     document.getElementById('chatModal').classList.remove('hidden');
-                    loadRoomMessages(currentRoom);
+                    loadRoomMessages(currentRoom, true);
                     chatActive = true; stopAlert();
                 }
             }
@@ -302,11 +303,11 @@
         document.getElementById('currentRoomTitle').innerText = `房间 ${room}${groupId ? ' (群组)' : ''}`;
         renderRoomList();
         document.getElementById('chatModal').classList.remove('hidden');
-        loadRoomMessages(room);
+        loadRoomMessages(room, true);
         chatActive = true; stopAlert();
     }
 
-    // 前台消息加载（增量去重，不再整体刷新）
+    // 消息加载：isInitial 为 true 时清空重建，否则增量追加
     async function loadRoomMessages(room, isInitial = true) {
         let url = `${BASE}?password=${encodeURIComponent(PASSWORD())}&action=chat_messages&room=${room}`;
         if (currentGroupId) url += `&groupId=${encodeURIComponent(currentGroupId)}`;
@@ -342,7 +343,7 @@
             body: JSON.stringify({ password: PASSWORD(), action: 'send_msg', room: currentRoom, text, groupId: currentGroupId }) 
         });
         document.getElementById('chatInput').value = '';
-        // 发送后只加载新消息，不清除历史
+        // 发送后增量加载，不清除历史
         loadRoomMessages(currentRoom, false);
     }
 
@@ -365,7 +366,7 @@
         }
     }
 
-    // 历史聊天（打开独立模态框，显示所有消息）
+    // 历史聊天（弹出独立窗口，显示所有消息）
     async function showChatHistory() {
         if (!currentRoom) return;
         document.getElementById('historyRoomTitle').innerText = currentRoom;
@@ -385,7 +386,7 @@
         });
     }
 
-    // 快捷回复（不变）
+    // 快捷回复
     function toggleQuickReply() {
         document.getElementById('quickReplyModal').style.display = 'flex';
         renderQuickReplies();
@@ -419,12 +420,170 @@
         renderQuickReplies();
     }
 
-    // 通知处理等其余函数保持之前完整版，此处省略（请确保已包含前面完整版中的所有其他函数）
-    // 包括 openNotifyList, loadNotifications, handleNotif, showHistory, openUsageList 等
-    // 以及二维码相关的 showAllTempQRs, renderTempQR, deleteTempQR, generateTimeQR 等
+    // ===== 通知处理 =====
+    async function openNotifyList(type) {
+        document.getElementById('listTitle').innerText = getTypeName(type) + ' 待处理列表';
+        document.getElementById('historyBtn').style.display = 'inline-block';
+        await loadNotifications(type);
+        document.getElementById('listModal').style.display = 'flex';
+    }
 
-    // 请将之前完整版 frontdesk.html 中的剩余函数完整粘贴于此（因篇幅限制未列出）
-    // 实际使用时，请替换为包含所有函数的完整文件
+    async function loadNotifications(type) {
+        const res = await fetch(`${BASE}?password=${encodeURIComponent(PASSWORD())}&action=notifications&type=${type}`);
+        const data = await res.json();
+        const tbody = document.querySelector('#notifTable tbody');
+        tbody.innerHTML = '';
+        if (data.notifications && data.notifications.length) {
+            data.notifications.forEach(n => tbody.innerHTML += `<tr><td>${n.room}</td><td>${n.question}</td><td><button onclick="handleNotif('${n.id}')" class="success">处理完成</button></td></tr>`);
+        } else tbody.innerHTML = '<tr><td colspan="3">暂无数据</td></tr>';
+    }
+
+    async function handleNotif(id) {
+        await fetch(`${BASE}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ password: PASSWORD(), action: 'notifications', id }) });
+        const title = document.getElementById('listTitle').innerText;
+        const map = { '清扫任务':'clean', '用车服务':'car', '订餐服务':'food', '续住需求':'extend' };
+        const key = Object.entries(map).find(([k,v])=>title.includes(k))?.[1];
+        if (key) { await loadNotifications(key); const r = await fetch(BASE + '?password=' + encodeURIComponent(PASSWORD())); dashboardData = await r.json(); updateDashboard(); }
+    }
+
+    async function showHistory() {
+        const title = document.getElementById('listTitle').innerText;
+        const map = { '清扫任务':'clean', '用车服务':'car', '订餐服务':'food', '续住需求':'extend' };
+        const key = Object.entries(map).find(([k,v])=>title.includes(k))?.[1];
+        if (!key) return;
+        const res = await fetch(`${BASE}?password=${encodeURIComponent(PASSWORD())}&action=notifications&type=${key}&history=1`);
+        const data = await res.json();
+        const tbody = document.querySelector('#notifTable tbody');
+        tbody.innerHTML = '';
+        if (data.history) data.history.forEach(n => tbody.innerHTML += `<tr><td>${n.room}</td><td>${n.question}</td><td>${new Date(n.resolvedAt).toLocaleString()}</td></tr>`);
+        else tbody.innerHTML = '<tr><td colspan="3">暂无记录</td></tr>';
+    }
+
+    function openTodayStats() { alert('今日处理统计'); }
+    function openUsageList() {
+        const rooms = dashboardData?.todayRooms || [];
+        document.getElementById('listTitle').innerText = '今日使用房间';
+        document.getElementById('historyBtn').style.display = 'none';
+        const tbody = document.querySelector('#notifTable tbody');
+        tbody.innerHTML = '';
+        if (rooms.length > 0) rooms.forEach(r => tbody.innerHTML += `<tr><td>${r}</td></tr>`);
+        else tbody.innerHTML = '<tr><td>暂无</td></tr>';
+        document.getElementById('listModal').style.display = 'flex';
+    }
+    function getTypeName(t) { const m = { usage:'今日使用', room_msg:'房客消息', clean:'清扫任务', car:'用车服务', food:'订餐服务', extend:'续住需求' }; return m[t]||''; }
+
+    // ===== 临时二维码管理 =====
+    async function showAllTempQRs() {
+        const res = await fetch(`${BASE}?password=${encodeURIComponent(PASSWORD())}&action=temp_qrs`);
+        const data = await res.json();
+        const container = document.getElementById('qrContainer');
+        container.innerHTML = '';
+        if (data.qrs && data.qrs.length > 0) {
+            data.qrs.forEach(qr => renderTempQR(qr));
+        } else {
+            container.innerHTML = '<p>暂无临时二维码，点击“生成时效二维码”创建</p>';
+        }
+        document.getElementById('qrModal').style.display = 'flex';
+    }
+
+    function renderTempQR(qr) {
+        const url = `${location.origin}/room-chat.html?room=${qr.roomId}&token=${qr.token}&checkin=${qr.checkin}&checkout=${qr.checkout}&groupId=${encodeURIComponent(qr.groupId)}`;
+        const div = document.createElement('div');
+        div.className = 'qr-room-item';
+        div.setAttribute('data-groupid', qr.groupId);
+        div.innerHTML = `<strong>${qr.roomName||qr.roomId} ${qr.checkinText} ~ ${qr.checkoutText}</strong>`;
+        const img = document.createElement('img');
+        img.src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(url)}&rnd=${Math.random()}`;
+        img.width = 200; img.height = 200;
+        img.onerror = () => { img.src = ''; div.innerHTML += '<p style="color:red;">二维码加载失败</p>'; };
+        div.appendChild(img);
+        const delBtn = document.createElement('button');
+        delBtn.className = 'delete-btn';
+        delBtn.innerHTML = '×';
+        delBtn.title = '删除此二维码（将停用）';
+        delBtn.onclick = () => deleteTempQR(qr.groupId);
+        div.appendChild(delBtn);
+        document.getElementById('qrContainer').appendChild(div);
+    }
+
+    async function deleteTempQR(groupId) {
+        if (!confirm('删除后该二维码将立即失效，确定吗？')) return;
+        await fetch(`${BASE}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: PASSWORD(), action: 'delete_temp_qr', groupId })
+        });
+        showAllTempQRs();
+    }
+
+    function showTimeQRForm() {
+        document.getElementById('timeQRForm').style.display = 'block';
+        document.getElementById('timeQRResult').innerHTML = '';
+    }
+
+    async function generateTimeQR() {
+        const roomId = document.getElementById('timeRoomId').value.trim();
+        const checkin = document.getElementById('checkinTime').value;
+        const checkout = document.getElementById('checkoutTime').value;
+        if (!roomId || !checkin || !checkout) return alert('请填写完整信息');
+
+        const roomRes = await fetch(`${BASE}?password=${encodeURIComponent(PASSWORD())}&action=rooms`);
+        const roomData = await roomRes.json();
+        const room = roomData.rooms?.find(r => r.id === roomId);
+        if (!room) return alert('房间不存在，请先在后台创建房间');
+
+        const formatTime = (dt) => dt.replace(/[-:]/g, '').replace('T', '').substring(0,12);
+        const checkinStr = formatTime(checkin);
+        const checkoutStr = formatTime(checkout);
+
+        const res = await fetch(`${BASE}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                password: PASSWORD(),
+                action: 'create_temp_qr',
+                roomId,
+                roomName: room.name || roomId,
+                token: room.token,
+                checkin: checkinStr,
+                checkout: checkoutStr
+            })
+        });
+        const data = await res.json();
+        if (data.success) {
+            document.getElementById('timeQRForm').style.display = 'none';
+            showAllTempQRs();
+        } else {
+            alert('创建失败：' + (data.error || '未知错误'));
+        }
+    }
+
+    function saveQR(id) {
+        // 临时二维码没有固定的 id，此函数保留兼容性
+    }
+
+    async function refreshRoomQR(id) {
+        // 临时二维码刷新实际是重新生成
+    }
+
+    // 心跳和自动刷新
+    function startTakeoverCheck() {
+        setInterval(() => {
+            if (!document.getElementById('dashboardPanel').classList.contains('hidden')) {
+                loadTakeoverRooms();
+                if (currentRoom) loadRoomMessages(currentRoom, false);
+            }
+        }, 5000);
+    }
+    function startAutoRefresh() {
+        setInterval(async () => {
+            if (document.getElementById('dashboardPanel').classList.contains('hidden')) return;
+            const r = await fetch(BASE + '?password=' + encodeURIComponent(PASSWORD()));
+            dashboardData = await r.json();
+            updateDashboard();
+        }, 30000);
+    }
+    window.addEventListener('beforeunload', stopAlert);
 </script>
 </body>
 </html>
