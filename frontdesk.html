@@ -12,7 +12,7 @@
         .login-box { background: white; border-radius: 20px; padding: 30px; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
         .dashboard { background: white; border-radius: 20px; padding: 30px; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.05); position: relative; }
         .logo { font-size: 60px; margin-bottom: 10px; }
-        h2 { color: #0b4f6c; margin-bottom: 30px; display: inline-block; }
+        h2 { color: #0b4f6c; margin-bottom: 30px; }
         .card-row { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 30px; }
         .type-card { flex: 1 0 auto; min-width: 100px; background: #f8fafc; border-radius: 15px; padding: 15px 10px; cursor: pointer; transition: all 0.2s; text-align: center; }
         .type-card:hover { background: #e8f4fd; }
@@ -29,7 +29,6 @@
         .hidden { display: none !important; }
         .support-text { margin-top: 20px; font-size: 12px; color: #888; text-align: center; }
         .today-stats-link { font-size: 12px; color: #3498db; cursor: pointer; text-decoration: underline; margin-top: 5px; text-align: center; }
-
         .btn-qr { position: absolute; top: 30px; right: 30px; background: #3498db; color: white; border: none; border-radius: 25px; padding: 10px 20px; cursor: pointer; font-weight: 600; }
 
         /* 对话框样式 */
@@ -50,10 +49,8 @@
         .input-area { padding: 15px; border-top: 1px solid #eee; display: flex; gap: 10px; }
         .input-area input { flex: 1; padding: 10px; border-radius: 20px; border: 1px solid #ddd; }
 
-        /* 二维码弹窗 */
         .qr-room-item { display: inline-block; margin: 20px; text-align: center; }
         .qr-room-item canvas { display: block; margin: 0 auto; }
-        .qr-btns { margin-top: 10px; }
         .qr-btns button { margin: 5px; }
     </style>
 </head>
@@ -72,37 +69,18 @@
         <div class="logo">🌊</div>
         <h2>山予海AI管家前台端</h2>
         <div class="card-row">
-            <div class="type-card" onclick="openUsageList()">
-                <div class="label">今日AI管家使用</div>
-                <div class="count" id="cnt_usage">0</div>
-            </div>
-            <div class="type-card" onclick="openRoomMsgList()">
-                <div class="label">房客消息</div>
-                <div class="count" id="cnt_room_msg">0</div>
-            </div>
-            <div class="type-card" onclick="openNotifyList('clean')">
-                <div class="label">清扫任务</div>
-                <div class="count" id="cnt_clean">0</div>
-            </div>
-            <div class="type-card" onclick="openNotifyList('car')">
-                <div class="label">用车服务</div>
-                <div class="count" id="cnt_car">0</div>
-            </div>
-            <div class="type-card" onclick="openNotifyList('food')">
-                <div class="label">订餐服务</div>
-                <div class="count" id="cnt_food">0</div>
-            </div>
-            <div class="type-card" onclick="openNotifyList('extend')">
-                <div class="label">续住需求</div>
-                <div class="count" id="cnt_extend">0</div>
-            </div>
+            <div class="type-card" onclick="openUsageList()"><div class="label">今日AI管家使用</div><div class="count" id="cnt_usage">0</div></div>
+            <div class="type-card" onclick="openRoomMsgList()"><div class="label">房客消息</div><div class="count" id="cnt_room_msg">0</div></div>
+            <div class="type-card" onclick="openNotifyList('clean')"><div class="label">清扫任务</div><div class="count" id="cnt_clean">0</div></div>
+            <div class="type-card" onclick="openNotifyList('car')"><div class="label">用车服务</div><div class="count" id="cnt_car">0</div></div>
+            <div class="type-card" onclick="openNotifyList('food')"><div class="label">订餐服务</div><div class="count" id="cnt_food">0</div></div>
+            <div class="type-card" onclick="openNotifyList('extend')"><div class="label">续住需求</div><div class="count" id="cnt_extend">0</div></div>
         </div>
         <div class="support-text">本程序由，山予海AI大模型团队提供技术支持</div>
         <div class="today-stats-link" onclick="openTodayStats()">📊 今日处理统计</div>
     </div>
 </div>
 
-<!-- 普通通知弹窗 -->
 <div id="listModal" class="modal-overlay">
     <div class="modal-content">
         <h4 id="listTitle"></h4>
@@ -112,56 +90,42 @@
     </div>
 </div>
 
-<!-- 对话框弹窗（默认隐藏） -->
 <div id="chatModal" class="chat-modal hidden">
     <div class="room-list" id="roomListContainer"></div>
     <div class="chat-area">
-        <div class="chat-header">
-            <span id="currentRoomTitle">房客消息</span>
-            <button onclick="endTakeover()" class="danger">结束对话</button>
-        </div>
+        <div class="chat-header"><span id="currentRoomTitle">房客消息</span><button onclick="endTakeover()" class="danger">结束对话</button></div>
         <div class="messages" id="chatMessages"></div>
-        <div class="input-area">
-            <input type="text" id="chatInput" placeholder="输入回复...">
-            <button onclick="sendMsg()">发送</button>
-        </div>
+        <div class="input-area"><input type="text" id="chatInput" placeholder="输入回复..."><button onclick="sendMsg()">发送</button></div>
     </div>
 </div>
 
-<!-- 二维码弹窗 -->
 <div id="qrModal" class="modal-overlay">
-    <div class="modal-content" style="max-width: 900px; width: 95%;">
+    <div class="modal-content" style="max-width:900px;width:95%;">
         <h3>所有房间二维码</h3>
-        <div id="qrContainer" style="display: flex; flex-wrap: wrap; justify-content: center;"></div>
+        <div id="qrContainer" style="display:flex;flex-wrap:wrap;justify-content:center;"></div>
         <button onclick="document.getElementById('qrModal').style.display='none'">关闭</button>
     </div>
 </div>
 
 <script>
-    let dashboardData = null;
-    let currentRoom = null;
-    let takeoverRooms = [];
-    let alertTimer = null;
-    let chatActive = false;
+    let dashboardData = null, currentRoom = null, takeoverRooms = [], alertTimer = null, chatActive = false;
     const PASSWORD = () => localStorage.getItem('front_password') || '';
     const BASE = '/api/frontdesk';
 
-    // 初始化隐藏
+    // 强制隐藏所有弹窗
     document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('chatModal').classList.add('hidden');
         document.getElementById('dashboardPanel').classList.add('hidden');
         document.getElementById('listModal').style.display = 'none';
         localStorage.removeItem('front_password');
-        currentRoom = null;
-        chatActive = false;
+        currentRoom = null; chatActive = false;
         if (alertTimer) clearInterval(alertTimer);
     });
 
     function speak(text) {
         if ('speechSynthesis' in window) {
             const utter = new SpeechSynthesisUtterance(text);
-            utter.lang = 'zh-CN';
-            utter.rate = 1.0;
+            utter.lang = 'zh-CN'; utter.rate = 1.0;
             speechSynthesis.speak(utter);
         }
     }
@@ -170,14 +134,9 @@
 
     function startAlert() {
         stopAlert();
-        const doSpeak = () => {
-            for (let i = 0; i < 3; i++) setTimeout(() => speak('您有一条房客信息，请立即回复'), i * 1000);
-        };
+        const doSpeak = () => { for (let i = 0; i < 3; i++) setTimeout(() => speak('您有一条房客信息，请立即回复'), i * 1000); };
         doSpeak();
-        alertTimer = setInterval(() => {
-            if (chatActive || currentRoom) { stopAlert(); return; }
-            doSpeak();
-        }, 30000);
+        alertTimer = setInterval(() => { if (chatActive || currentRoom) { stopAlert(); return; } doSpeak(); }, 30000);
     }
 
     async function login() {
@@ -191,6 +150,8 @@
             document.getElementById('chatModal').classList.add('hidden');
             currentRoom = null; chatActive = false; stopAlert();
             dashboardData = data;
+            // 激活语音权限（需要用户手势）
+            speak('登录成功');
             updateDashboard(true);
             startAutoRefresh();
             startTakeoverCheck();
@@ -200,28 +161,24 @@
     }
 
     function countByType(notifications) {
-        const counts = { room_msg:0, clean:0, car:0, food:0, extend:0 };
-        if (notifications) notifications.forEach(n => { if (counts.hasOwnProperty(n.type)) counts[n.type]++; });
-        return counts;
+        const c = { room_msg:0, clean:0, car:0, food:0, extend:0 };
+        if (notifications) notifications.forEach(n => { if (c.hasOwnProperty(n.type)) c[n.type]++; });
+        return c;
     }
 
-    function updateDashboard(skipVoice = false) {
+    function updateDashboard(skipVoice) {
         const notifications = dashboardData?.notifications || [];
-        const current = countByType(notifications);
-        current.usage = dashboardData?.todayRooms?.length || 0;
-        document.getElementById('cnt_usage').innerText = current.usage;
-        document.getElementById('cnt_room_msg').innerText = current.room_msg;
-        document.getElementById('cnt_clean').innerText = current.clean;
-        document.getElementById('cnt_car').innerText = current.car;
-        document.getElementById('cnt_food').innerText = current.food;
-        document.getElementById('cnt_extend').innerText = current.extend;
-
-        const now = new Date(); const hour = now.getHours();
-        if (current.room_msg > 0 && !chatActive && hour >= 8 && hour < 23) {
-            if (!alertTimer) startAlert();
-        } else if (current.room_msg === 0) {
-            stopAlert();
-        }
+        const cur = countByType(notifications);
+        cur.usage = dashboardData?.todayRooms?.length || 0;
+        document.getElementById('cnt_usage').innerText = cur.usage;
+        document.getElementById('cnt_room_msg').innerText = cur.room_msg;
+        document.getElementById('cnt_clean').innerText = cur.clean;
+        document.getElementById('cnt_car').innerText = cur.car;
+        document.getElementById('cnt_food').innerText = cur.food;
+        document.getElementById('cnt_extend').innerText = cur.extend;
+        const now = new Date(), hour = now.getHours();
+        if (cur.room_msg > 0 && !chatActive && hour >= 8 && hour < 23) { if (!alertTimer) startAlert(); }
+        else if (cur.room_msg === 0) stopAlert();
     }
 
     function openRoomMsgList() {
@@ -229,14 +186,14 @@
         else openNotifyList('room_msg');
     }
 
-    // ===== 接管房间相关 =====
+    // 接管房间
     async function loadTakeoverRooms() {
         if (!PASSWORD()) return;
         const res = await fetch(`${BASE}/chat?password=${encodeURIComponent(PASSWORD())}&action=rooms`);
         const data = await res.json();
         takeoverRooms = data.rooms || [];
         renderRoomList();
-        const now = new Date(); const hour = now.getHours();
+        const now = new Date(), hour = now.getHours();
         if (takeoverRooms.length > 0 && !chatActive && hour >= 8 && hour < 23) {
             if (document.getElementById('chatModal').classList.contains('hidden')) {
                 currentRoom = takeoverRooms[0].room;
@@ -247,70 +204,48 @@
             }
         }
         if (currentRoom && !takeoverRooms.some(r => r.room === currentRoom)) {
-            currentRoom = null;
-            document.getElementById('chatModal').classList.add('hidden');
-            chatActive = false;
+            currentRoom = null; document.getElementById('chatModal').classList.add('hidden'); chatActive = false;
         }
     }
 
     function renderRoomList() {
         const container = document.getElementById('roomListContainer');
-        container.innerHTML = takeoverRooms.map(r =>
-            `<div class="room-item ${currentRoom === r.room ? 'active' : ''}" onclick="openRoomChat('${r.room}')">
-                ${r.room} ${r.unread > 0 ? `<span class="badge-room">${r.unread}</span>` : ''}
-            </div>`
-        ).join('');
+        container.innerHTML = takeoverRooms.map(r => `<div class="room-item ${currentRoom===r.room?'active':''}" onclick="openRoomChat('${r.room}')">${r.room} ${r.unread>0?`<span class="badge-room">${r.unread}</span>`:''}</div>`).join('');
     }
 
     async function openRoomChat(room) {
-        currentRoom = room;
-        document.getElementById('currentRoomTitle').innerText = `房间 ${room}`;
-        renderRoomList();
-        document.getElementById('chatModal').classList.remove('hidden');
-        loadRoomMessages(room);
-        chatActive = true;
-        stopAlert();
+        currentRoom = room; document.getElementById('currentRoomTitle').innerText = `房间 ${room}`;
+        renderRoomList(); document.getElementById('chatModal').classList.remove('hidden');
+        loadRoomMessages(room); chatActive = true; stopAlert();
     }
 
     async function loadRoomMessages(room) {
         const res = await fetch(`${BASE}/chat?password=${encodeURIComponent(PASSWORD())}&room=${room}`);
         const data = await res.json();
-        const messagesDiv = document.getElementById('chatMessages');
-        messagesDiv.innerHTML = data.messages.map(m => {
-            let cls = 'ai';
-            if (m.sender === 'guest') cls = 'guest';
-            else if (m.sender === 'frontdesk') cls = 'frontdesk';
+        const div = document.getElementById('chatMessages');
+        div.innerHTML = data.messages.map(m => {
+            let cls = 'ai'; if (m.sender === 'guest') cls = 'guest'; else if (m.sender === 'frontdesk') cls = 'frontdesk';
             return `<div class="msg ${cls}"><div class="bubble">${m.text}</div></div>`;
         }).join('');
-        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        div.scrollTop = div.scrollHeight;
     }
 
     async function sendMsg() {
         const text = document.getElementById('chatInput').value.trim();
         if (!text || !currentRoom) return;
-        await fetch(`${BASE}/chat`, {
-            method: 'POST',
-            headers: {'Content-Type':'application/json'},
-            body: JSON.stringify({ password: PASSWORD(), room: currentRoom, text })
-        });
+        await fetch(`${BASE}/chat`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ password: PASSWORD(), room: currentRoom, text }) });
         document.getElementById('chatInput').value = '';
         loadRoomMessages(currentRoom);
     }
 
     async function endTakeover() {
         if (!currentRoom) return;
-        await fetch(`${BASE}/chat`, {
-            method: 'POST',
-            headers: {'Content-Type':'application/json'},
-            body: JSON.stringify({ password: PASSWORD(), room: currentRoom, action: 'end_takeover' })
-        });
-        document.getElementById('chatModal').classList.add('hidden');
-        currentRoom = null;
-        chatActive = false;
+        await fetch(`${BASE}/chat`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ password: PASSWORD(), room: currentRoom, action: 'end_takeover' }) });
+        document.getElementById('chatModal').classList.add('hidden'); currentRoom = null; chatActive = false;
         loadTakeoverRooms();
     }
 
-    // ===== 普通通知 =====
+    // 普通通知
     async function openNotifyList(type) {
         document.getElementById('listTitle').innerText = getTypeName(type) + ' 待处理列表';
         document.getElementById('historyBtn').style.display = 'inline-block';
@@ -319,170 +254,95 @@
     }
 
     async function loadNotifications(type) {
-        const pass = PASSWORD();
-        const res = await fetch(`${BASE}/notifications?password=${encodeURIComponent(pass)}&type=${type}`);
+        const res = await fetch(`${BASE}/notifications?password=${encodeURIComponent(PASSWORD())}&type=${type}`);
         const data = await res.json();
         const tbody = document.querySelector('#notifTable tbody');
         tbody.innerHTML = '';
         if (data.notifications && data.notifications.length) {
-            data.notifications.forEach(n => {
-                tbody.innerHTML += `<tr><td>${n.room}</td><td>${n.question}</td><td><button onclick="handleNotif('${n.id}')" class="success">处理完成</button></td></tr>`;
-            });
+            data.notifications.forEach(n => tbody.innerHTML += `<tr><td>${n.room}</td><td>${n.question}</td><td><button onclick="handleNotif('${n.id}')" class="success">处理完成</button></td></tr>`);
         } else tbody.innerHTML = '<tr><td colspan="3">暂无数据</td></tr>';
     }
 
     async function handleNotif(id) {
-        const pass = PASSWORD();
-        await fetch(`${BASE}/notifications`, {
-            method: 'POST',
-            headers: {'Content-Type':'application/json'},
-            body: JSON.stringify({ password: pass, id })
-        });
-        // 重新加载当前类型
+        await fetch(`${BASE}/notifications`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ password: PASSWORD(), id }) });
         const title = document.getElementById('listTitle').innerText;
-        const typeMap = { '清扫任务':'clean', '用车服务':'car', '订餐服务':'food', '续住需求':'extend' };
-        const typeKey = Object.entries(typeMap).find(([k,v]) => title.includes(k))?.[1];
-        if (typeKey) {
-            await loadNotifications(typeKey);
-            const res = await fetch(BASE + '?password=' + encodeURIComponent(pass));
-            dashboardData = await res.json();
-            updateDashboard();
-        }
+        const map = { '清扫任务':'clean', '用车服务':'car', '订餐服务':'food', '续住需求':'extend' };
+        const key = Object.entries(map).find(([k,v])=>title.includes(k))?.[1];
+        if (key) { await loadNotifications(key); const r = await fetch(BASE + '?password=' + encodeURIComponent(PASSWORD())); dashboardData = await r.json(); updateDashboard(); }
     }
 
     async function showHistory() {
-        const pass = PASSWORD();
         const title = document.getElementById('listTitle').innerText;
-        const typeMap = { '清扫任务':'clean', '用车服务':'car', '订餐服务':'food', '续住需求':'extend' };
-        const typeKey = Object.entries(typeMap).find(([k,v]) => title.includes(k))?.[1];
-        if (!typeKey) return;
-        const res = await fetch(`${BASE}/notifications?password=${encodeURIComponent(pass)}&type=${typeKey}&history=1`);
+        const map = { '清扫任务':'clean', '用车服务':'car', '订餐服务':'food', '续住需求':'extend' };
+        const key = Object.entries(map).find(([k,v])=>title.includes(k))?.[1];
+        if (!key) return;
+        const res = await fetch(`${BASE}/notifications?password=${encodeURIComponent(PASSWORD())}&type=${key}&history=1`);
         const data = await res.json();
         const tbody = document.querySelector('#notifTable tbody');
         tbody.innerHTML = '';
-        if (data.history && data.history.length) {
-            data.history.forEach(n => {
-                tbody.innerHTML += `<tr><td>${n.room}</td><td>${n.question}</td><td>${new Date(n.resolvedAt).toLocaleString()}</td></tr>`;
-            });
-        } else tbody.innerHTML = '<tr><td colspan="3">暂无处理记录</td></tr>';
+        if (data.history) data.history.forEach(n => tbody.innerHTML += `<tr><td>${n.room}</td><td>${n.question}</td><td>${new Date(n.resolvedAt).toLocaleString()}</td></tr>`);
+        else tbody.innerHTML = '<tr><td colspan="3">暂无记录</td></tr>';
     }
 
     function openTodayStats() { alert('今日处理统计'); }
-
     function openUsageList() {
         const rooms = dashboardData?.todayRooms || [];
         document.getElementById('listTitle').innerText = '今日使用房间';
         document.getElementById('historyBtn').style.display = 'none';
         const tbody = document.querySelector('#notifTable tbody');
         tbody.innerHTML = '';
-        if (rooms.length > 0) {
-            rooms.forEach(room => { tbody.innerHTML += `<tr><td>${room}</td></tr>`; });
-        } else tbody.innerHTML = '<tr><td>暂无房间使用</td></tr>';
+        if (rooms.length > 0) rooms.forEach(r => tbody.innerHTML += `<tr><td>${r}</td></tr>`);
+        else tbody.innerHTML = '<tr><td>暂无</td></tr>';
         document.getElementById('listModal').style.display = 'flex';
     }
+    function getTypeName(t) { const m = { usage:'今日使用', room_msg:'房客消息', clean:'清扫任务', car:'用车服务', food:'订餐服务', extend:'续住需求' }; return m[t]||''; }
 
-    function getTypeName(type) {
-        const map = { usage:'今日使用', room_msg:'房客消息', clean:'清扫任务', car:'用车服务', food:'订餐服务', extend:'续住需求' };
-        return map[type] || '';
-    }
-
-    // ===== 客房二维码 =====
+    // 二维码
     async function showAllRoomsQR() {
-        const pass = PASSWORD();
-        const res = await fetch(`${BASE}?password=${encodeURIComponent(pass)}&action=rooms_qr`);
+        const res = await fetch(`${BASE}/rooms?password=${encodeURIComponent(PASSWORD())}`);
         const data = await res.json();
-        if (!data.rooms) return alert('获取房间列表失败');
+        if (!data.rooms) return alert('获取失败');
         const container = document.getElementById('qrContainer');
         container.innerHTML = '';
-        const logo = new Image();
-        logo.src = '/logo.jpg';
+        const logo = new Image(); logo.src = '/logo.jpg';
         logo.onload = () => {
             data.rooms.forEach(room => {
                 const url = `${location.origin}/room-chat.html?room=${room.id}&token=${room.token}`;
-                const canvas = document.createElement('canvas');
-                canvas.width = 300; canvas.height = 300;
-                QRCode.toCanvas(canvas, url, { width: 300, margin: 1, color: { dark: '#000', light: '#fff' }, errorCorrectionLevel: 'H' }, function (error) {
-                    if (error) console.error(error);
+                const canvas = document.createElement('canvas'); canvas.width = 300; canvas.height = 300;
+                QRCode.toCanvas(canvas, url, { width: 300, margin: 1, errorCorrectionLevel: 'H' }, () => {
                     const ctx = canvas.getContext('2d');
-                    const logoSize = 70;
-                    const logoX = (canvas.width - logoSize) / 2;
-                    const logoY = (canvas.height - logoSize) / 2;
-                    ctx.fillStyle = '#fff';
-                    ctx.beginPath();
-                    ctx.arc(canvas.width/2, canvas.height/2, logoSize/2 + 4, 0, 2*Math.PI);
-                    ctx.fill();
-                    ctx.drawImage(logo, logoX, logoY, logoSize, logoSize);
-                    room._canvas = canvas;
+                    const s = 70, x = (300-s)/2, y = (300-s)/2;
+                    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(150,150,s/2+4,0,2*Math.PI); ctx.fill();
+                    ctx.drawImage(logo, x, y, s, s);
                 });
-                const div = document.createElement('div');
-                div.className = 'qr-room-item';
-                div.innerHTML = `<strong>${room.name || room.id}</strong>`;
+                const div = document.createElement('div'); div.className = 'qr-room-item';
+                div.innerHTML = `<strong>${room.name||room.id}</strong>`;
                 div.appendChild(canvas);
-                const btns = document.createElement('div');
-                btns.className = 'qr-btns';
-                btns.innerHTML = `<button class="success" onclick="saveQR('${room.id}')">💾 保存</button>
-                                 <button class="warning" onclick="refreshRoomQR('${room.id}')">🔄 刷新</button>`;
-                div.appendChild(btns);
+                div.innerHTML += `<div class="qr-btns"><button class="success" onclick="saveQR('${room.id}')">💾保存</button><button class="warning" onclick="refreshRoomQR('${room.id}')">🔄刷新</button></div>`;
                 container.appendChild(div);
             });
         };
         document.getElementById('qrModal').style.display = 'flex';
     }
-
-    function saveQR(roomId) {
-        const container = document.getElementById('qrContainer');
-        const items = container.getElementsByClassName('qr-room-item');
+    function saveQR(id) {
+        const items = document.querySelectorAll('.qr-room-item');
         for (let item of items) {
-            const nameEl = item.querySelector('strong');
-            if (nameEl && nameEl.innerText.includes(roomId)) {
+            if (item.querySelector('strong').innerText.includes(id)) {
                 const canvas = item.querySelector('canvas');
-                if (canvas) {
-                    const link = document.createElement('a');
-                    link.download = `房间${roomId}-二维码.png`;
-                    link.href = canvas.toDataURL('image/png');
-                    link.click();
-                }
+                if (canvas) { const a = document.createElement('a'); a.download = `房间${id}.png`; a.href = canvas.toDataURL(); a.click(); }
                 break;
             }
         }
     }
-
-    async function refreshRoomQR(roomId) {
-        if (!confirm('刷新后旧二维码将失效，确定继续吗？')) return;
-        const pass = PASSWORD();
-        const res = await fetch(`${BASE}?password=${encodeURIComponent(pass)}&action=refresh_room`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: roomId })
-        });
+    async function refreshRoomQR(id) {
+        if (!confirm('旧码将失效，确定？')) return;
+        const res = await fetch(`${BASE}/rooms/refresh?password=${encodeURIComponent(PASSWORD())}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ id }) });
         const data = await res.json();
-        if (data.success) {
-            alert('二维码已刷新！');
-            showAllRoomsQR();
-        } else {
-            alert('刷新失败：' + (data.error || '未知错误'));
-        }
+        if (data.success) { alert('已刷新'); showAllRoomsQR(); } else alert('失败');
     }
 
-    function startTakeoverCheck() {
-        setInterval(() => {
-            if (!document.getElementById('dashboardPanel').classList.contains('hidden')) {
-                loadTakeoverRooms();
-                if (currentRoom) loadRoomMessages(currentRoom);
-            }
-        }, 5000);
-    }
-
-    function startAutoRefresh() {
-        setInterval(async () => {
-            if (document.getElementById('dashboardPanel').classList.contains('hidden')) return;
-            const pass = PASSWORD();
-            const res = await fetch(BASE + '?password=' + encodeURIComponent(pass));
-            dashboardData = await res.json();
-            updateDashboard();
-        }, 30000);
-    }
-
+    function startTakeoverCheck() { setInterval(() => { if (!document.getElementById('dashboardPanel').classList.contains('hidden')) { loadTakeoverRooms(); if (currentRoom) loadRoomMessages(currentRoom); } }, 5000); }
+    function startAutoRefresh() { setInterval(async () => { if (document.getElementById('dashboardPanel').classList.contains('hidden')) return; const r = await fetch(BASE + '?password=' + encodeURIComponent(PASSWORD())); dashboardData = await r.json(); updateDashboard(); }, 30000); }
     window.addEventListener('beforeunload', stopAlert);
 </script>
 </body>
