@@ -22,11 +22,11 @@
         .modal-content { background: white; border-radius: 20px; padding: 25px; max-width: 500px; width: 90%; max-height: 70vh; overflow-y: auto; }
         table { width: 100%; border-collapse: collapse; font-size: 14px; }
         th, td { border-bottom: 1px solid #eee; padding: 10px 6px; text-align: left; }
-        button { padding: 10px 20px; background: #1e90ff; color: white; border: none; border-radius: 25px; cursor: pointer; font-weight: 600; }
+        button { padding: 10px 20px; background: #1e90ff; color: white; border: none; border-radius: 25px; cursor: pointer; font-weight: 600; margin: 5px; }
         button.success { background: #27ae60; }
         button.danger { background: #e74c3c; }
         button.warning { background: #f39c12; }
-        .hidden { display: none; }
+        .hidden { display: none !important; }
         .support-text { margin-top: 20px; font-size: 12px; color: #888; text-align: center; }
         .today-stats-link { font-size: 12px; color: #3498db; cursor: pointer; text-decoration: underline; margin-top: 5px; text-align: center; }
 
@@ -138,7 +138,6 @@
 </div>
 
 <script>
-    // 全局变量
     let dashboardData = null;
     let currentRoom = null;
     let takeoverRooms = [];
@@ -147,15 +146,15 @@
     const PASSWORD = () => localStorage.getItem('front_password') || '';
     const BASE = '/api/frontdesk';
 
-    // ========== 初始化隐藏 ==========
-    document.addEventListener('DOMContentLoaded', function() {
+    // 初始化隐藏
+    document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('chatModal').classList.add('hidden');
         document.getElementById('dashboardPanel').classList.add('hidden');
         document.getElementById('listModal').style.display = 'none';
         localStorage.removeItem('front_password');
-        window.currentRoom = null;
-        window.chatActive = false;
-        if (window.alertTimer) { clearInterval(window.alertTimer); window.alertTimer = null; }
+        currentRoom = null;
+        chatActive = false;
+        if (alertTimer) clearInterval(alertTimer);
     });
 
     function speak(text) {
@@ -190,9 +189,7 @@
             document.getElementById('loginPanel').classList.add('hidden');
             document.getElementById('dashboardPanel').classList.remove('hidden');
             document.getElementById('chatModal').classList.add('hidden');
-            currentRoom = null;
-            chatActive = false;
-            stopAlert();
+            currentRoom = null; chatActive = false; stopAlert();
             dashboardData = data;
             updateDashboard(true);
             startAutoRefresh();
@@ -208,7 +205,7 @@
         return counts;
     }
 
-    function updateDashboard() {
+    function updateDashboard(skipVoice = false) {
         const notifications = dashboardData?.notifications || [];
         const current = countByType(notifications);
         current.usage = dashboardData?.todayRooms?.length || 0;
@@ -222,7 +219,9 @@
         const now = new Date(); const hour = now.getHours();
         if (current.room_msg > 0 && !chatActive && hour >= 8 && hour < 23) {
             if (!alertTimer) startAlert();
-        } else if (current.room_msg === 0) stopAlert();
+        } else if (current.room_msg === 0) {
+            stopAlert();
+        }
     }
 
     function openRoomMsgList() {
@@ -230,80 +229,199 @@
         else openNotifyList('room_msg');
     }
 
-    // ===== 接管房间相关（保持不变） =====
-    async function loadTakeoverRooms() { /* 代码省略，同之前 */ }
-    function renderRoomList() { /* 省略 */ }
-    async function openRoomChat(room) { /* 省略 */ }
-    async function loadRoomMessages(room) { /* 省略 */ }
-    async function sendMsg() { /* 省略 */ }
-    async function endTakeover() { /* 省略 */ }
+    // ===== 接管房间相关 =====
+    async function loadTakeoverRooms() {
+        if (!PASSWORD()) return;
+        const res = await fetch(`${BASE}/chat?password=${encodeURIComponent(PASSWORD())}&action=rooms`);
+        const data = await res.json();
+        takeoverRooms = data.rooms || [];
+        renderRoomList();
+        const now = new Date(); const hour = now.getHours();
+        if (takeoverRooms.length > 0 && !chatActive && hour >= 8 && hour < 23) {
+            if (document.getElementById('chatModal').classList.contains('hidden')) {
+                currentRoom = takeoverRooms[0].room;
+                document.getElementById('chatModal').classList.remove('hidden');
+                loadRoomMessages(currentRoom);
+                chatActive = true;
+                stopAlert();
+            }
+        }
+        if (currentRoom && !takeoverRooms.some(r => r.room === currentRoom)) {
+            currentRoom = null;
+            document.getElementById('chatModal').classList.add('hidden');
+            chatActive = false;
+        }
+    }
 
-    // ===== 普通通知（保持） =====
-    async function openNotifyList(type) { /* 省略 */ }
-    async function loadNotifications(type) { /* 省略 */ }
-    async function handleNotif(id) { /* 省略 */ }
-    async function showHistory() { /* 省略 */ }
-    function openTodayStats() { alert('今日处理统计'); }
-    function openUsageList() { /* 省略 */ }
+    function renderRoomList() {
+        const container = document.getElementById('roomListContainer');
+        container.innerHTML = takeoverRooms.map(r =>
+            `<div class="room-item ${currentRoom === r.room ? 'active' : ''}" onclick="openRoomChat('${r.room}')">
+                ${r.room} ${r.unread > 0 ? `<span class="badge-room">${r.unread}</span>` : ''}
+            </div>`
+        ).join('');
+    }
 
-    // ===== 客房二维码功能 =====
-    async function showAllRoomsQR() {
-        // 获取所有房间信息（需要 admin token，但前台端可以通过不加 token 的公开接口？）
-        // 我们使用 /api/admin/rooms 需要 x-admin-token，前台没有。所以需要一个公开接口。
-        // 我们在前端用 fetch('/api/admin/rooms') 会失败，因为需要 admin 密码。
-        // 解决方案：在 api/frontdesk.js 中增加一个获取房间列表的接口（带密码验证），或者在前端使用已有的 rooms 数据。
-        // 这里我们通过已登录的前台密码去请求一个新接口 /api/frontdesk/rooms 来获取房间数据。
-        // 因此需要增加后端接口。但考虑到简化，我们可以让用户在前端直接用 fetch('/api/admin/rooms') 并传递前台密码？
-        // 不行，Admin 密码与前台密码不同。所以我们新增一个 api/frontdesk/rooms.js 返回房间列表（需前台密码验证）。
-        // 下面代码假设存在该接口。
+    async function openRoomChat(room) {
+        currentRoom = room;
+        document.getElementById('currentRoomTitle').innerText = `房间 ${room}`;
+        renderRoomList();
+        document.getElementById('chatModal').classList.remove('hidden');
+        loadRoomMessages(room);
+        chatActive = true;
+        stopAlert();
+    }
+
+    async function loadRoomMessages(room) {
+        const res = await fetch(`${BASE}/chat?password=${encodeURIComponent(PASSWORD())}&room=${room}`);
+        const data = await res.json();
+        const messagesDiv = document.getElementById('chatMessages');
+        messagesDiv.innerHTML = data.messages.map(m => {
+            let cls = 'ai';
+            if (m.sender === 'guest') cls = 'guest';
+            else if (m.sender === 'frontdesk') cls = 'frontdesk';
+            return `<div class="msg ${cls}"><div class="bubble">${m.text}</div></div>`;
+        }).join('');
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+
+    async function sendMsg() {
+        const text = document.getElementById('chatInput').value.trim();
+        if (!text || !currentRoom) return;
+        await fetch(`${BASE}/chat`, {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ password: PASSWORD(), room: currentRoom, text })
+        });
+        document.getElementById('chatInput').value = '';
+        loadRoomMessages(currentRoom);
+    }
+
+    async function endTakeover() {
+        if (!currentRoom) return;
+        await fetch(`${BASE}/chat`, {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ password: PASSWORD(), room: currentRoom, action: 'end_takeover' })
+        });
+        document.getElementById('chatModal').classList.add('hidden');
+        currentRoom = null;
+        chatActive = false;
+        loadTakeoverRooms();
+    }
+
+    // ===== 普通通知 =====
+    async function openNotifyList(type) {
+        document.getElementById('listTitle').innerText = getTypeName(type) + ' 待处理列表';
+        document.getElementById('historyBtn').style.display = 'inline-block';
+        await loadNotifications(type);
+        document.getElementById('listModal').style.display = 'flex';
+    }
+
+    async function loadNotifications(type) {
         const pass = PASSWORD();
-        const res = await fetch(`${BASE}/rooms?password=${encodeURIComponent(pass)}`);
+        const res = await fetch(`${BASE}/notifications?password=${encodeURIComponent(pass)}&type=${type}`);
+        const data = await res.json();
+        const tbody = document.querySelector('#notifTable tbody');
+        tbody.innerHTML = '';
+        if (data.notifications && data.notifications.length) {
+            data.notifications.forEach(n => {
+                tbody.innerHTML += `<tr><td>${n.room}</td><td>${n.question}</td><td><button onclick="handleNotif('${n.id}')" class="success">处理完成</button></td></tr>`;
+            });
+        } else tbody.innerHTML = '<tr><td colspan="3">暂无数据</td></tr>';
+    }
+
+    async function handleNotif(id) {
+        const pass = PASSWORD();
+        await fetch(`${BASE}/notifications`, {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ password: pass, id })
+        });
+        // 重新加载当前类型
+        const title = document.getElementById('listTitle').innerText;
+        const typeMap = { '清扫任务':'clean', '用车服务':'car', '订餐服务':'food', '续住需求':'extend' };
+        const typeKey = Object.entries(typeMap).find(([k,v]) => title.includes(k))?.[1];
+        if (typeKey) {
+            await loadNotifications(typeKey);
+            const res = await fetch(BASE + '?password=' + encodeURIComponent(pass));
+            dashboardData = await res.json();
+            updateDashboard();
+        }
+    }
+
+    async function showHistory() {
+        const pass = PASSWORD();
+        const title = document.getElementById('listTitle').innerText;
+        const typeMap = { '清扫任务':'clean', '用车服务':'car', '订餐服务':'food', '续住需求':'extend' };
+        const typeKey = Object.entries(typeMap).find(([k,v]) => title.includes(k))?.[1];
+        if (!typeKey) return;
+        const res = await fetch(`${BASE}/notifications?password=${encodeURIComponent(pass)}&type=${typeKey}&history=1`);
+        const data = await res.json();
+        const tbody = document.querySelector('#notifTable tbody');
+        tbody.innerHTML = '';
+        if (data.history && data.history.length) {
+            data.history.forEach(n => {
+                tbody.innerHTML += `<tr><td>${n.room}</td><td>${n.question}</td><td>${new Date(n.resolvedAt).toLocaleString()}</td></tr>`;
+            });
+        } else tbody.innerHTML = '<tr><td colspan="3">暂无处理记录</td></tr>';
+    }
+
+    function openTodayStats() { alert('今日处理统计'); }
+
+    function openUsageList() {
+        const rooms = dashboardData?.todayRooms || [];
+        document.getElementById('listTitle').innerText = '今日使用房间';
+        document.getElementById('historyBtn').style.display = 'none';
+        const tbody = document.querySelector('#notifTable tbody');
+        tbody.innerHTML = '';
+        if (rooms.length > 0) {
+            rooms.forEach(room => { tbody.innerHTML += `<tr><td>${room}</td></tr>`; });
+        } else tbody.innerHTML = '<tr><td>暂无房间使用</td></tr>';
+        document.getElementById('listModal').style.display = 'flex';
+    }
+
+    function getTypeName(type) {
+        const map = { usage:'今日使用', room_msg:'房客消息', clean:'清扫任务', car:'用车服务', food:'订餐服务', extend:'续住需求' };
+        return map[type] || '';
+    }
+
+    // ===== 客房二维码 =====
+    async function showAllRoomsQR() {
+        const pass = PASSWORD();
+        const res = await fetch(`${BASE}?password=${encodeURIComponent(pass)}&action=rooms_qr`);
         const data = await res.json();
         if (!data.rooms) return alert('获取房间列表失败');
         const container = document.getElementById('qrContainer');
         container.innerHTML = '';
-        // 预加载 logo 图片
         const logo = new Image();
-        logo.src = '/logo.jpg'; // 确保 logo.jpg 在项目根目录
+        logo.src = '/logo.jpg';
         logo.onload = () => {
             data.rooms.forEach(room => {
                 const url = `${location.origin}/room-chat.html?room=${room.id}&token=${room.token}`;
                 const canvas = document.createElement('canvas');
-                canvas.width = 300;
-                canvas.height = 300;
-                // 生成二维码
-                QRCode.toCanvas(canvas, url, {
-                    width: 300,
-                    margin: 1,
-                    color: { dark: '#000', light: '#fff' },
-                    errorCorrectionLevel: 'H'
-                }, function (error) {
+                canvas.width = 300; canvas.height = 300;
+                QRCode.toCanvas(canvas, url, { width: 300, margin: 1, color: { dark: '#000', light: '#fff' }, errorCorrectionLevel: 'H' }, function (error) {
                     if (error) console.error(error);
-                    // 绘制 logo
                     const ctx = canvas.getContext('2d');
-                    const logoSize = 70; // 约23%的边长
+                    const logoSize = 70;
                     const logoX = (canvas.width - logoSize) / 2;
                     const logoY = (canvas.height - logoSize) / 2;
-                    // 绘制白色背景圆角
                     ctx.fillStyle = '#fff';
                     ctx.beginPath();
                     ctx.arc(canvas.width/2, canvas.height/2, logoSize/2 + 4, 0, 2*Math.PI);
                     ctx.fill();
                     ctx.drawImage(logo, logoX, logoY, logoSize, logoSize);
-                    // 保存 canvas 引用到 room 对象
                     room._canvas = canvas;
                 });
-                // 创建 DOM 元素
                 const div = document.createElement('div');
                 div.className = 'qr-room-item';
                 div.innerHTML = `<strong>${room.name || room.id}</strong>`;
                 div.appendChild(canvas);
                 const btns = document.createElement('div');
                 btns.className = 'qr-btns';
-                btns.innerHTML = `
-                    <button class="success" onclick="saveQR('${room.id}')">💾 保存</button>
-                    <button class="warning" onclick="refreshRoomQR('${room.id}')">🔄 刷新</button>
-                `;
+                btns.innerHTML = `<button class="success" onclick="saveQR('${room.id}')">💾 保存</button>
+                                 <button class="warning" onclick="refreshRoomQR('${room.id}')">🔄 刷新</button>`;
                 div.appendChild(btns);
                 container.appendChild(div);
             });
@@ -311,10 +429,7 @@
         document.getElementById('qrModal').style.display = 'flex';
     }
 
-    // 保存二维码图片
     function saveQR(roomId) {
-        const canvas = document.querySelector(`#qrContainer canvas`); // 简化获取，实际需精确匹配
-        // 更好方式：遍历 qrContainer 找到对应 room id 的 canvas
         const container = document.getElementById('qrContainer');
         const items = container.getElementsByClassName('qr-room-item');
         for (let item of items) {
@@ -332,11 +447,10 @@
         }
     }
 
-    // 刷新房间二维码
     async function refreshRoomQR(roomId) {
         if (!confirm('刷新后旧二维码将失效，确定继续吗？')) return;
         const pass = PASSWORD();
-        const res = await fetch(`${BASE}/rooms/refresh?password=${encodeURIComponent(pass)}`, {
+        const res = await fetch(`${BASE}?password=${encodeURIComponent(pass)}&action=refresh_room`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ id: roomId })
@@ -344,14 +458,12 @@
         const data = await res.json();
         if (data.success) {
             alert('二维码已刷新！');
-            showAllRoomsQR(); // 重新加载列表
-            // 同时更新后台数据（已经通过 API 更新了）
+            showAllRoomsQR();
         } else {
             alert('刷新失败：' + (data.error || '未知错误'));
         }
     }
 
-    // 定时任务
     function startTakeoverCheck() {
         setInterval(() => {
             if (!document.getElementById('dashboardPanel').classList.contains('hidden')) {
