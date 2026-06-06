@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>山予海 · 前台端</title>
     <link rel="icon" type="image/png" href="/favicon.png">
-    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
     <style>
         body { font-family: 'PingFang SC','Microsoft YaHei',sans-serif; background: #f0f4f8; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
         .container { max-width: 800px; width: 100%; }
@@ -50,7 +49,7 @@
         .input-area input { flex: 1; padding: 10px; border-radius: 20px; border: 1px solid #ddd; }
 
         .qr-room-item { display: inline-block; margin: 20px; text-align: center; position: relative; }
-        .qr-room-item canvas { display: block; margin: 0 auto; }
+        .qr-room-item img { display: block; margin: 0 auto; width: 200px; height: 200px; }
         .qr-room-item .delete-btn { position: absolute; top: 5px; right: 5px; background: red; color: white; border: none; border-radius: 50%; width: 22px; height: 22px; font-size: 14px; line-height: 20px; text-align: center; cursor: pointer; padding: 0; }
         .time-input { margin: 10px 0; }
         .time-input label { font-size: 14px; margin-right: 5px; }
@@ -284,13 +283,11 @@
     async function sendMsg() {
         const text = document.getElementById('chatInput').value.trim();
         if (!text || !currentRoom) { alert('请选择左侧已触发的客房'); return; }
-        
         await fetch(`${BASE}`, { 
             method:'POST', 
             headers:{'Content-Type':'application/json'}, 
             body: JSON.stringify({ password: PASSWORD(), action: 'send_msg', room: currentRoom, text }) 
         });
-        
         document.getElementById('chatInput').value = '';
         loadRoomMessages(currentRoom);
     }
@@ -363,7 +360,7 @@
     }
     function getTypeName(t) { const m = { usage:'今日使用', room_msg:'房客消息', clean:'清扫任务', car:'用车服务', food:'订餐服务', extend:'续住需求' }; return m[t]||''; }
 
-    // ========== 二维码（纯净版，无logo） ==========
+    // ========== 二维码（使用外部 API，稳定可靠） ==========
     async function showAllRoomsQR() {
         const res = await fetch(`${BASE}?password=${encodeURIComponent(PASSWORD())}&action=rooms`);
         const data = await res.json();
@@ -376,22 +373,22 @@
 
     function generateQR(room) {
         const url = `${location.origin}/room-chat.html?room=${room.id}&token=${room.token}`;
-        // 如果已存在相同房间的二维码，先移除
         const existing = document.querySelector(`.qr-room-item[data-room="${room.id}"]`);
         if (existing) existing.remove();
 
-        const canvas = document.createElement('canvas');
-        canvas.width = 300; canvas.height = 300;
-        QRCode.toCanvas(canvas, url, { width: 300, margin: 1, errorCorrectionLevel: 'H' }, (error) => {
-            if (error) return;
-            const div = document.createElement('div');
-            div.className = 'qr-room-item';
-            div.setAttribute('data-room', room.id);
-            div.innerHTML = `<strong>${room.name||room.id}</strong>`;
-            div.appendChild(canvas);
-            div.innerHTML += `<div class="qr-btns"><button class="success" onclick="saveQR('${room.id}')">💾保存</button><button class="warning" onclick="refreshRoomQR('${room.id}')">🔄刷新</button></div>`;
-            document.getElementById('qrContainer').appendChild(div);
-        });
+        const div = document.createElement('div');
+        div.className = 'qr-room-item';
+        div.setAttribute('data-room', room.id);
+        div.innerHTML = `<strong>${room.name||room.id}</strong>`;
+        const img = document.createElement('img');
+        // 使用外部 API 生成二维码，加随机数避免缓存
+        img.src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(url)}&rnd=${Math.random()}`;
+        img.width = 200;
+        img.height = 200;
+        img.onerror = () => { img.src = ''; div.innerHTML += '<p style="color:red;">二维码加载失败</p>'; };
+        div.appendChild(img);
+        div.innerHTML += `<div class="qr-btns"><button class="success" onclick="saveQR('${room.id}')">💾保存</button><button class="warning" onclick="refreshRoomQR('${room.id}')">🔄刷新</button></div>`;
+        document.getElementById('qrContainer').appendChild(div);
     }
 
     function showTimeQRForm() {
@@ -415,30 +412,50 @@
         const checkoutStr = formatTime(checkout);
 
         const url = `${location.origin}/room-chat.html?room=${room.id}&token=${room.token}&checkin=${checkinStr}&checkout=${checkoutStr}`;
-        const canvas = document.createElement('canvas');
-        canvas.width = 300; canvas.height = 300;
-        QRCode.toCanvas(canvas, url, { width: 300, margin: 1, errorCorrectionLevel: 'H' }, (error) => {
-            if (error) return;
-            const div = document.createElement('div');
-            div.className = 'qr-room-item';
-            div.innerHTML = `<strong>时效二维码（${room.name||room.id}）<br>${checkin.replace('T',' ')} ~ ${checkout.replace('T',' ')}</strong>`;
-            div.appendChild(canvas);
-            const delBtn = document.createElement('button');
-            delBtn.className = 'delete-btn';
-            delBtn.innerHTML = '×';
-            delBtn.title = '删除此二维码';
-            delBtn.onclick = function() { div.remove(); };
-            div.appendChild(delBtn);
-            document.getElementById('timeQRResult').appendChild(div);
-        });
+        const div = document.createElement('div');
+        div.className = 'qr-room-item';
+        div.innerHTML = `<strong>时效二维码（${room.name||room.id}）<br>${checkin.replace('T',' ')} ~ ${checkout.replace('T',' ')}</strong>`;
+        const img = document.createElement('img');
+        img.src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(url)}&rnd=${Math.random()}`;
+        img.width = 200;
+        img.height = 200;
+        img.onerror = () => { img.src = ''; div.innerHTML += '<p style="color:red;">二维码加载失败</p>'; };
+        div.appendChild(img);
+        const delBtn = document.createElement('button');
+        delBtn.className = 'delete-btn';
+        delBtn.innerHTML = '×';
+        delBtn.title = '删除此二维码';
+        delBtn.onclick = function() { div.remove(); };
+        div.appendChild(delBtn);
+        document.getElementById('timeQRResult').appendChild(div);
     }
 
     function saveQR(id) {
         const items = document.querySelectorAll('.qr-room-item');
         for (let item of items) {
             if (item.querySelector('strong')?.innerText.includes(id)) {
-                const canvas = item.querySelector('canvas');
-                if (canvas) { const a = document.createElement('a'); a.download = `房间${id}.png`; a.href = canvas.toDataURL(); a.click(); }
+                const img = item.querySelector('img');
+                if (img && img.src) {
+                    // 通过 canvas 绘制图像以便下载（绕过跨域限制）
+                    const canvas = document.createElement('canvas');
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    const ctx = canvas.getContext('2d');
+                    const image = new Image();
+                    image.crossOrigin = 'Anonymous';
+                    image.src = img.src;
+                    image.onload = () => {
+                        ctx.drawImage(image, 0, 0);
+                        const a = document.createElement('a');
+                        a.download = `房间${id}.png`;
+                        a.href = canvas.toDataURL();
+                        a.click();
+                    };
+                    image.onerror = () => {
+                        // 如果 canvas 跨域失败，直接打开图片新窗口
+                        window.open(img.src, '_blank');
+                    };
+                }
                 break;
             }
         }
