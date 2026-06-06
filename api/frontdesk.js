@@ -12,7 +12,6 @@ async function checkPassword(password) {
 
 export default async function handler(req, res) {
     const url = new URL(req.url, `http://${req.headers.host}`);
-    // 优先从 POST body 获取 action，否则从查询参数获取，默认为 main
     let action;
     if (req.method === 'POST') {
         action = req.body?.action || url.searchParams.get('action') || 'main';
@@ -20,14 +19,13 @@ export default async function handler(req, res) {
         action = url.searchParams.get('action') || 'main';
     }
 
-    // 密码获取（POST 从 body，GET 从查询参数）
     const password = req.method === 'GET' ? url.searchParams.get('password') : (req.body?.password || '');
     if (!password || !(await checkPassword(password))) {
         return res.status(403).json({ error: '密码错误' });
     }
 
     try {
-        // ===== 主看板 =====
+        // 主看板
         if (action === 'main' && req.method === 'GET') {
             const today = new Date().toISOString().slice(0, 10);
             const chatKeys = await redis.keys('chat:*');
@@ -50,14 +48,10 @@ export default async function handler(req, res) {
                     if (n.status === 'pending') notifications.push({ id: key.replace('notification:', ''), ...n });
                 }
             }
-            return res.status(200).json({
-                valid: true,
-                todayRooms: Array.from(rooms),
-                notifications
-            });
+            return res.status(200).json({ valid: true, todayRooms: Array.from(rooms), notifications });
         }
 
-        // ===== 通知列表（按类型） =====
+        // 通知列表
         if (action === 'notifications' && req.method === 'GET') {
             const type = url.searchParams.get('type');
             const history = url.searchParams.get('history');
@@ -77,7 +71,7 @@ export default async function handler(req, res) {
             return res.status(200).json(history === '1' ? { history: items } : { notifications: items });
         }
 
-        // 标记通知为已处理（POST）
+        // 处理通知
         if (action === 'notifications' && req.method === 'POST') {
             const { id } = req.body || {};
             if (!id) return res.status(400).json({ error: '缺少通知ID' });
@@ -90,7 +84,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ success: true });
         }
 
-        // ===== 接管房间列表 =====
+        // 接管房间列表
         if (action === 'takeover_rooms' && req.method === 'GET') {
             const keys = await redis.keys('takeover:*');
             const rooms = [];
@@ -108,7 +102,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ rooms });
         }
 
-        // 获取聊天记录
+        // 聊天记录
         if (action === 'chat_messages' && req.method === 'GET') {
             const room = url.searchParams.get('room');
             if (!room) return res.status(400).json({ error: '缺少房间号' });
@@ -170,13 +164,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ success: true });
         }
 
-        // 语音设置
-        if (action === 'voice' && req.method === 'GET') {
-            const voice = await redis.get('config:voice') || '';
-            return res.status(200).json({ voice });
-        }
-
-        // 房间二维码列表
+        // 房间二维码
         if (action === 'rooms' && req.method === 'GET') {
             const keys = await redis.keys('room:*');
             const rooms = [];
@@ -190,7 +178,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ rooms });
         }
 
-        // 刷新房间二维码（POST，action 从 body 获取）
+        // 刷新房间二维码
         if (action === 'refresh_room' && req.method === 'POST') {
             const { id } = req.body || {};
             if (!id) return res.status(400).json({ error: '缺少房间号' });
