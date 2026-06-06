@@ -67,8 +67,9 @@
 
     let lastMessageTime = null;
     let pollingTimer = null;
-    let isSending = false;           // 防止重复发送
-    let messageKeys = new Set();     // 用于去重 (time_text)
+    let isSending = false;
+    const messageKeys = new Set();                // 去重 key: time_sender_text
+    const recentSentTexts = new Map();           // 记录近期发送的文本和时间，用于过滤重复
 
     async function verifyRoom() {
         try {
@@ -98,17 +99,13 @@
     }
 
     function startChat() {
-        // 防止重复绑定事件
         const input = document.getElementById('messageInput');
         input.removeEventListener('keypress', onEnterPress);
         input.addEventListener('keypress', onEnterPress);
 
-        // 先清空旧轮询
         if (pollingTimer) clearInterval(pollingTimer);
 
-        // 先初始化加载所有历史消息，然后再开始轮询
         initialLoad().then(() => {
-            // 启动轮询（每5秒拉取新消息）
             pollingTimer = setInterval(pollNewMessages, 5000);
         });
     }
@@ -129,9 +126,11 @@
         isSending = true;
         document.getElementById('sendBtn').disabled = true;
 
-        // 立即在界面添加客人消息
         const localTime = new Date().toISOString();
+        // 本地立即显示用户消息
         appendMessage('user', text, localTime);
+        // 记录该文本，用于后续轮询过滤
+        recentSentTexts.set(text, Date.now());
         input.value = '';
 
         try {
@@ -142,21 +141,25 @@
             });
             const data = await res.json();
             if (data.reply) {
-                // AI 回复直接追加，不用从后端再拉取，避免重复
                 appendMessage('ai', data.reply, new Date().toISOString());
             }
+            // 如果接管状态 reply 为空，不添加任何消息
         } catch (err) {
             appendMessage('ai', '抱歉，服务暂时不可用，请稍后再试。', new Date().toISOString());
         } finally {
             isSending = false;
             document.getElementById('sendBtn').disabled = false;
+            // 清理超过 10 秒的记录
+            const now = Date.now();
+            for (const [key, time] of recentSentTexts.entries()) {
+                if (now - time > 10000) recentSentTexts.delete(key);
+            }
         }
     }
 
-    // 追加消息到界面，并更新 lastMessageTime 和去重集合
     function appendMessage(sender, text, time) {
-        const key = `${time}_${text}`;
-        if (messageKeys.has(key)) return;   // 已存在，跳过
+        const key = `${time}_${sender}_${text}`;
+        if (messageKeys.has(key)) return;
         messageKeys.add(key);
 
         const chatBox = document.getElementById('chatMessages');
@@ -166,13 +169,11 @@
         chatBox.appendChild(msgDiv);
         chatBox.scrollTop = chatBox.scrollHeight;
 
-        // 更新最后一条消息的时间（用于增量拉取）
         if (!lastMessageTime || new Date(time) > new Date(lastMessageTime)) {
             lastMessageTime = time;
         }
     }
 
-    // 初始加载：获取所有历史消息，并渲染
     async function initialLoad() {
         try {
             let url = `/api/frontdesk?password=guest&action=chat_messages&room=${encodeURIComponent(currentRoom)}`;
@@ -181,17 +182,15 @@
             const res = await fetch(url);
             const data = await res.json();
             const chatBox = document.getElementById('chatMessages');
-            chatBox.innerHTML = '';  // 清空默认提示
-            messageKeys.clear();     // 清空去重集合
+            chatBox.innerHTML = '';
+            messageKeys.clear();
 
             if (data.messages && data.messages.length > 0) {
                 for (const m of data.messages) {
                     let sender = m.sender === 'guest' ? 'user' : (m.sender === 'frontdesk' ? 'frontdesk' : 'ai');
                     appendMessage(sender, m.text, m.time);
                 }
-                // 设置最后一条消息的时间
-                const lastMsg = data.messages[data.messages.length - 1];
-                lastMessageTime = lastMsg.time;
+                lastMessageTime = data.messages[data.messages.length - 1].time;
             } else {
                 lastMessageTime = null;
             }
@@ -200,11 +199,9 @@
         }
     }
 
-    // 轮询：仅获取 since 之后的新消息
     async function pollNewMessages() {
+        if (!lastMessageTime) return;
         try {
-            if (!lastMessageTime) return; // 还没有任何消息，不轮询
-
             let url = `/api/frontdesk?password=guest&action=chat_messages&room=${encodeURIComponent(currentRoom)}`;
             if (groupId) url += `&groupId=${encodeURIComponent(groupId)}`;
             url += `&since=${encodeURIComponent(lastMessageTime)}`;
@@ -212,12 +209,16 @@
             const res = await fetch(url);
             const data = await res.json();
             if (data.messages && data.messages.length > 0) {
+                const now = Date.now();
                 for (const m of data.messages) {
+                    // 如果是 guest 消息，检查是否是近期自己发送的，避免重复
+                    if (m.sender === 'guest') {
+                        const sentTime = recentSentTexts.get(m.text);
+                        if (sentTime && (now - sentTime < 8000)) continue; // 8 秒内相同文本跳过
+                    }
                     let sender = m.sender === 'guest' ? 'user' : (m.sender === 'frontdesk' ? 'frontdesk' : 'ai');
-                    // 注意：轮询回来的新消息可能包含客人自己刚发的内容，但已通过去重跳过
                     appendMessage(sender, m.text, m.time);
                 }
-                // 更新最后消息时间
                 const lastNew = data.messages[data.messages.length - 1];
                 if (new Date(lastNew.time) > new Date(lastMessageTime)) {
                     lastMessageTime = lastNew.time;
@@ -226,7 +227,6 @@
         } catch (e) {}
     }
 
-    // 页面关闭时清除定时器
     window.addEventListener('beforeunload', () => {
         if (pollingTimer) clearInterval(pollingTimer);
     });
