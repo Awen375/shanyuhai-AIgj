@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>山予海 · 智能管家</title>
+    <title>山予海AI智能管家</title>
     <style>
         body { font-family: 'PingFang SC','Microsoft YaHei',sans-serif; background: #f0f4f8; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
         .chat-container { max-width: 600px; width: 100%; background: white; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); display: flex; flex-direction: column; height: 90vh; }
@@ -36,15 +36,16 @@
 <div class="chat-container" id="chatContainer">
     <!-- 欢迎页（默认显示） -->
     <div id="welcomeScreen" class="welcome-screen">
-        <h1>🏖️ 山予海民宿</h1>
-        <p>180度海景，躺在床上就能看大海<br>您的专属AI管家小予已就位</p>
+        <img src="/logo.jpg" alt="logo" class="logo-icon" style="width: 80px; height: auto;" />
+        <h1>山予海AI管家</h1>
+        <p>尊贵的山予海房客您好<br>我是您专属的AI管家<br>点击下方按钮开始我们的对话吧！</p>
         <button onclick="startJourney()">✨ 开始智能之旅</button>
     </div>
 
     <!-- 其他提示页（隐藏） -->
     <div id="loadingMsg" class="fullscreen-msg" style="display:none;"><h3>验证中...</h3></div>
     <div id="waitingMsg" class="fullscreen-msg" style="display:none;">
-        <h3>🕒 等待分配</h3>
+        <h3>🕒 您的AI管家正在来的路上······</h3>
         <p id="waitingText"></p>
     </div>
     <div id="expiredMsg" class="fullscreen-msg" style="display:none;">
@@ -52,14 +53,14 @@
         <p>您的AI专属管家已过期，很高兴陪您一起度过这场难忘的度假。下次再见，我在山予海永远等您。</p>
     </div>
     <div id="disabledMsg" class="fullscreen-msg" style="display:none;">
-        <h3>⛔ 管家已停用</h3>
+        <h3>⛔ 您的专属AI管家已停用</h3>
         <p id="disabledText">您的专属AI管家已被停用，请联系前台获取新的二维码！</p>
     </div>
 
     <!-- 聊天界面（隐藏） -->
     <div id="chatInterface" style="display:none; flex-direction: column; height: 100%;">
         <div class="chat-header">
-            <h2>🌊 山予海 AI 管家</h2>
+            <h2>山予海 AI 管家</h2>
             <p id="roomInfo" style="color:#888;"></p>
         </div>
         <div class="chat-messages" id="chatMessages"></div>
