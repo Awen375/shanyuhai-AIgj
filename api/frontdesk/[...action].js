@@ -11,18 +11,19 @@ async function checkPassword(password) {
 }
 
 export default async function handler(req, res) {
-    const url = new URL(req.url);
-    const pathname = url.pathname.replace('/api/frontdesk', '').replace('/api/frontdesk/', '');
-    const action = pathname || 'main';
+    // 不使用 new URL，直接分割路径
+    const pathOnly = req.url.split('?')[0];
+    const rawAction = pathOnly.replace('/api/frontdesk', '').replace('/api/frontdesk/', '');
+    const action = rawAction || 'main';
 
-    // 兼容 GET 和 POST 获取密码的方式
-    const password = req.method === 'GET' ? url.searchParams.get('password') : req.body?.password;
+    // 获取密码（GET 从 query，POST 从 body）
+    const password = req.method === 'GET' ? new URLSearchParams(req.url.split('?')[1]).get('password') : req.body?.password;
     if (!password || !(await checkPassword(password))) {
         return res.status(403).json({ error: '密码错误' });
     }
 
     try {
-        // 主看板数据
+        // ===== 主看板数据 =====
         if (action === 'main' && req.method === 'GET') {
             const today = new Date().toISOString().slice(0, 10);
             const chatKeys = await redis.keys('chat:*');
@@ -52,10 +53,11 @@ export default async function handler(req, res) {
             });
         }
 
-        // 通知列表 (按类型)
+        // ===== 通知列表（按类型） =====
         if (action === 'notifications' && req.method === 'GET') {
-            const type = url.searchParams.get('type');
-            const history = url.searchParams.get('history');
+            const urlParams = new URLSearchParams(req.url.split('?')[1]);
+            const type = urlParams.get('type');
+            const history = urlParams.get('history');
             const keys = await redis.keys('notification:*');
             const items = [];
             for (const key of keys) {
@@ -85,60 +87,61 @@ export default async function handler(req, res) {
             return res.status(200).json({ success: true });
         }
 
-        // 接管房间列表
-        if (action === 'chat' && req.method === 'GET' && url.searchParams.get('action') === 'rooms') {
-            const keys = await redis.keys('takeover:*');
-            const rooms = [];
-            for (const key of keys) {
-                const data = await redis.get(key);
-                if (data) {
-                    const takeover = typeof data === 'string' ? JSON.parse(data) : data;
-                    if (takeover.active) {
-                        const room = key.replace('takeover:', '');
-                        const msgKeys = await redis.keys(`pending_msg:${room}:*`);
-                        rooms.push({ room, unread: msgKeys.length, startTime: takeover.startTime });
+        // ===== 接管房间 =====
+        if (action === 'chat' && req.method === 'GET') {
+            const urlParams = new URLSearchParams(req.url.split('?')[1]);
+            const subAction = urlParams.get('action');
+            const room = urlParams.get('room');
+            if (subAction === 'rooms') {
+                const keys = await redis.keys('takeover:*');
+                const rooms = [];
+                for (const key of keys) {
+                    const data = await redis.get(key);
+                    if (data) {
+                        const takeover = typeof data === 'string' ? JSON.parse(data) : data;
+                        if (takeover.active) {
+                            const r = key.replace('takeover:', '');
+                            const msgKeys = await redis.keys(`pending_msg:${r}:*`);
+                            rooms.push({ room: r, unread: msgKeys.length, startTime: takeover.startTime });
+                        }
                     }
                 }
-            }
-            return res.status(200).json({ rooms });
-        }
-
-        // 获取房间聊天记录
-        if (action === 'chat' && req.method === 'GET' && url.searchParams.get('room')) {
-            const room = url.searchParams.get('room');
-            const chatKeys = await redis.keys(`chat:*`);
-            const messages = [];
-            for (const key of chatKeys) {
-                const data = await redis.get(key);
-                if (data) {
-                    try {
-                        const msg = typeof data === 'string' ? JSON.parse(data) : data;
-                        if (msg.room === room && msg.reply) messages.push({ sender: 'ai', text: msg.reply, time: msg.time });
-                    } catch (e) {}
+                return res.status(200).json({ rooms });
+            } else if (room) {
+                const chatKeys = await redis.keys(`chat:*`);
+                const messages = [];
+                for (const key of chatKeys) {
+                    const data = await redis.get(key);
+                    if (data) {
+                        try {
+                            const msg = typeof data === 'string' ? JSON.parse(data) : data;
+                            if (msg.room === room && msg.reply) messages.push({ sender: 'ai', text: msg.reply, time: msg.time });
+                        } catch (e) {}
+                    }
                 }
-            }
-            const frontKeys = await redis.keys(`front_msg:${room}:*`);
-            for (const key of frontKeys) {
-                const data = await redis.get(key);
-                if (data) {
-                    try {
-                        const msg = typeof data === 'string' ? JSON.parse(data) : data;
-                        messages.push({ sender: msg.sender, text: msg.text, time: msg.time });
-                    } catch (e) {}
+                const frontKeys = await redis.keys(`front_msg:${room}:*`);
+                for (const key of frontKeys) {
+                    const data = await redis.get(key);
+                    if (data) {
+                        try {
+                            const msg = typeof data === 'string' ? JSON.parse(data) : data;
+                            messages.push({ sender: msg.sender, text: msg.text, time: msg.time });
+                        } catch (e) {}
+                    }
                 }
-            }
-            const pendingKeys = await redis.keys(`pending_msg:${room}:*`);
-            for (const key of pendingKeys) {
-                const data = await redis.get(key);
-                if (data) {
-                    try {
-                        const msg = typeof data === 'string' ? JSON.parse(data) : data;
-                        messages.push({ sender: 'guest', text: msg.text, time: msg.time });
-                    } catch (e) {}
+                const pendingKeys = await redis.keys(`pending_msg:${room}:*`);
+                for (const key of pendingKeys) {
+                    const data = await redis.get(key);
+                    if (data) {
+                        try {
+                            const msg = typeof data === 'string' ? JSON.parse(data) : data;
+                            messages.push({ sender: 'guest', text: msg.text, time: msg.time });
+                        } catch (e) {}
+                    }
                 }
+                messages.sort((a, b) => new Date(a.time) - new Date(b.time));
+                return res.status(200).json({ messages });
             }
-            messages.sort((a, b) => new Date(a.time) - new Date(b.time));
-            return res.status(200).json({ messages });
         }
 
         // 发送前台消息
