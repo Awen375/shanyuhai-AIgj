@@ -11,11 +11,16 @@ async function checkPassword(password) {
 }
 
 export default async function handler(req, res) {
-    // 使用查询参数 action 区分功能
     const url = new URL(req.url, `http://${req.headers.host}`);
-    const action = url.searchParams.get('action') || 'main';
+    // 优先从 POST body 获取 action，否则从查询参数获取，默认为 main
+    let action;
+    if (req.method === 'POST') {
+        action = req.body?.action || url.searchParams.get('action') || 'main';
+    } else {
+        action = url.searchParams.get('action') || 'main';
+    }
 
-    // 获取密码（GET 从查询参数，POST 从 body）
+    // 密码获取（POST 从 body，GET 从查询参数）
     const password = req.method === 'GET' ? url.searchParams.get('password') : (req.body?.password || '');
     if (!password || !(await checkPassword(password))) {
         return res.status(403).json({ error: '密码错误' });
@@ -72,7 +77,7 @@ export default async function handler(req, res) {
             return res.status(200).json(history === '1' ? { history: items } : { notifications: items });
         }
 
-        // 标记通知为已处理
+        // 标记通知为已处理（POST）
         if (action === 'notifications' && req.method === 'POST') {
             const { id } = req.body || {};
             if (!id) return res.status(400).json({ error: '缺少通知ID' });
@@ -85,7 +90,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ success: true });
         }
 
-        // ===== 接管房间相关 =====
+        // ===== 接管房间列表 =====
         if (action === 'takeover_rooms' && req.method === 'GET') {
             const keys = await redis.keys('takeover:*');
             const rooms = [];
@@ -103,7 +108,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ rooms });
         }
 
-        // 获取某个房间的聊天记录
+        // 获取聊天记录
         if (action === 'chat_messages' && req.method === 'GET') {
             const room = url.searchParams.get('room');
             if (!room) return res.status(400).json({ error: '缺少房间号' });
@@ -142,7 +147,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ messages });
         }
 
-        // 发送前台消息
+        // 发送消息
         if (action === 'send_msg' && req.method === 'POST') {
             const { room, text } = req.body || {};
             if (!room || !text) return res.status(400).json({ error: '缺少参数' });
@@ -185,7 +190,7 @@ export default async function handler(req, res) {
             return res.status(200).json({ rooms });
         }
 
-        // 刷新房间二维码
+        // 刷新房间二维码（POST，action 从 body 获取）
         if (action === 'refresh_room' && req.method === 'POST') {
             const { id } = req.body || {};
             if (!id) return res.status(400).json({ error: '缺少房间号' });
