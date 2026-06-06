@@ -49,8 +49,9 @@
         .input-area { padding: 15px; border-top: 1px solid #eee; display: flex; gap: 10px; }
         .input-area input { flex: 1; padding: 10px; border-radius: 20px; border: 1px solid #ddd; }
 
-        .qr-room-item { display: inline-block; margin: 20px; text-align: center; }
+        .qr-room-item { display: inline-block; margin: 20px; text-align: center; position: relative; }
         .qr-room-item canvas { display: block; margin: 0 auto; }
+        .qr-room-item .delete-btn { position: absolute; top: 5px; right: 5px; background: red; color: white; border: none; border-radius: 50%; width: 22px; height: 22px; font-size: 14px; line-height: 20px; text-align: center; cursor: pointer; padding: 0; }
         .time-input { margin: 10px 0; }
         .time-input label { font-size: 14px; margin-right: 5px; }
         .time-input input { padding: 8px; border-radius: 10px; border: 1px solid #ddd; }
@@ -124,7 +125,7 @@
         </div>
         <button onclick="generateTimeQR()" class="success">生成二维码</button>
         <button onclick="document.getElementById('timeQRForm').style.display='none'">取消</button>
-        <div id="timeQRResult" style="margin-top:20px;"></div>
+        <div id="timeQRResult" style="margin-top:20px; display:flex; flex-wrap:wrap; justify-content:center;"></div>
     </div>
     <button onclick="document.getElementById('qrModal').style.display='none'">关闭</button>
 </div></div>
@@ -201,12 +202,26 @@
         document.getElementById('cnt_car').innerText = cur.car;
         document.getElementById('cnt_food').innerText = cur.food;
         document.getElementById('cnt_extend').innerText = cur.extend;
-        const now = new Date(), hour = now.getHours();
         if (cur.room_msg > 0 && !chatActive) { if (!alertTimer) startAlert(); }
         else if (cur.room_msg === 0) stopAlert();
     }
 
+    // 清除所有房客消息通知（标记为已处理）
+    async function clearRoomMsgNotifications() {
+        if (!dashboardData?.notifications) return;
+        const ids = dashboardData.notifications.filter(n => n.type === 'room_msg').map(n => n.id);
+        for (const id of ids) {
+            await fetch(`${BASE}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ password: PASSWORD(), action: 'notifications', id }) });
+        }
+        // 从本地数据中移除这些通知
+        dashboardData.notifications = dashboardData.notifications.filter(n => n.type !== 'room_msg');
+        updateDashboard();
+        stopAlert();
+    }
+
+    // 点击“房客消息”卡片
     async function openRoomMsgList() {
+        await clearRoomMsgNotifications();          // 清除所有房客消息提醒
         await loadTakeoverRooms(true);
         document.getElementById('chatModal').classList.remove('hidden');
         if (takeoverRooms.length === 0) {
@@ -352,32 +367,47 @@
     }
     function getTypeName(t) { const m = { usage:'今日使用', room_msg:'房客消息', clean:'清扫任务', car:'用车服务', food:'订餐服务', extend:'续住需求' }; return m[t]||''; }
 
-    // 二维码功能（原有 + 时效）
+    // ========== 二维码（不依赖logo，失败仍生成） ==========
     async function showAllRoomsQR() {
         const res = await fetch(`${BASE}?password=${encodeURIComponent(PASSWORD())}&action=rooms`);
         const data = await res.json();
         if (!data.rooms) return alert('获取房间列表失败');
         const container = document.getElementById('qrContainer');
         container.innerHTML = '';
-        const logo = new Image(); logo.src = '/logo.jpg';
-        logo.onload = () => data.rooms.forEach(room => generateQR(room, logo));
-        logo.onerror = () => data.rooms.forEach(room => generateQR(room, null));
-        setTimeout(() => { if (logo.complete && logo.naturalWidth === 0) data.rooms.forEach(room => generateQR(room, null)); }, 3000);
+        // 直接生成所有二维码（不等待logo）
+        data.rooms.forEach(room => generateQR(room, null));
         document.getElementById('qrModal').style.display = 'flex';
+
+        // 后台静默加载logo，成功后再刷新所有二维码
+        const logo = new Image();
+        logo.src = '/logo.jpg';
+        logo.onload = () => {
+            // 重新生成带logo的二维码
+            data.rooms.forEach(room => generateQR(room, logo));
+        };
     }
 
     function generateQR(room, logo) {
         const url = `${location.origin}/room-chat.html?room=${room.id}&token=${room.token}`;
-        const canvas = document.createElement('canvas'); canvas.width = 300; canvas.height = 300;
+        const existing = document.querySelector(`.qr-room-item[data-room="${room.id}"]`);
+        if (existing) existing.remove();  // 更新时先移除旧二维码
+
+        const canvas = document.createElement('canvas');
+        canvas.width = 300; canvas.height = 300;
         QRCode.toCanvas(canvas, url, { width: 300, margin: 1, errorCorrectionLevel: 'H' }, (error) => {
             if (error) return;
             const ctx = canvas.getContext('2d');
-            if (logo) {
+            if (logo && logo.complete && logo.naturalWidth > 0) {
                 const size = 70, x = (canvas.width - size) / 2, y = (canvas.height - size) / 2;
-                ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(canvas.width/2, canvas.height/2, size/2+4, 0, 2*Math.PI); ctx.fill();
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.arc(canvas.width/2, canvas.height/2, size/2+4, 0, 2*Math.PI);
+                ctx.fill();
                 ctx.drawImage(logo, x, y, size, size);
             }
-            const div = document.createElement('div'); div.className = 'qr-room-item';
+            const div = document.createElement('div');
+            div.className = 'qr-room-item';
+            div.setAttribute('data-room', room.id);
             div.innerHTML = `<strong>${room.name||room.id}</strong>`;
             div.appendChild(canvas);
             div.innerHTML += `<div class="qr-btns"><button class="success" onclick="saveQR('${room.id}')">💾保存</button><button class="warning" onclick="refreshRoomQR('${room.id}')">🔄刷新</button></div>`;
@@ -406,25 +436,22 @@
         const checkoutStr = formatTime(checkout);
 
         const url = `${location.origin}/room-chat.html?room=${room.id}&token=${room.token}&checkin=${checkinStr}&checkout=${checkoutStr}`;
-        const canvas = document.createElement('canvas'); canvas.width = 300; canvas.height = 300;
+        const canvas = document.createElement('canvas');
+        canvas.width = 300; canvas.height = 300;
         QRCode.toCanvas(canvas, url, { width: 300, margin: 1, errorCorrectionLevel: 'H' }, (error) => {
             if (error) return;
-            const div = document.getElementById('timeQRResult');
-            div.innerHTML = `<strong>时效二维码（${room.name||room.id}）</strong>`;
+            const div = document.createElement('div');
+            div.className = 'qr-room-item';
+            div.innerHTML = `<strong>时效二维码（${room.name||room.id}）<br>${checkin.replace('T',' ')} ~ ${checkout.replace('T',' ')}</strong>`;
             div.appendChild(canvas);
-            div.innerHTML += `<br><button class="success" onclick="saveTimeQR()">💾保存二维码</button>`;
-            window._timeQRCanvas = canvas;
+            const delBtn = document.createElement('button');
+            delBtn.className = 'delete-btn';
+            delBtn.innerHTML = '×';
+            delBtn.title = '删除此二维码';
+            delBtn.onclick = function() { div.remove(); };
+            div.appendChild(delBtn);
+            document.getElementById('timeQRResult').appendChild(div);
         });
-    }
-
-    function saveTimeQR() {
-        const canvas = window._timeQRCanvas;
-        if (canvas) {
-            const a = document.createElement('a');
-            a.download = `时效二维码.png`;
-            a.href = canvas.toDataURL();
-            a.click();
-        }
     }
 
     function saveQR(id) {
