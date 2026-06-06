@@ -11,19 +11,42 @@ export default async function handler(req, res) {
     const url = new URL(req.url, `http://${req.headers.host}`);
     const room = url.searchParams.get('room');
     const token = url.searchParams.get('token');
-    const checkin = url.searchParams.get('checkin');   // 格式 YYYYMMDDHHmm 例 202606071400
-    const checkout = url.searchParams.get('checkout'); // 同上
+    const checkin = url.searchParams.get('checkin');
+    const checkout = url.searchParams.get('checkout');
+    const groupId = url.searchParams.get('groupId');   // 新增
 
     if (!room || !token) return res.status(400).json({ error: '缺少房间或令牌' });
 
     try {
-        // 验证 token 是否与 Redis 中存储的一致
+        // 验证固定房间令牌
         const roomData = await redis.get(`room:${room}`);
         if (!roomData) return res.status(200).json({ valid: false, reason: '房间不存在' });
         const saved = typeof roomData === 'string' ? JSON.parse(roomData) : roomData;
         if (saved.token !== token) return res.status(200).json({ valid: false, reason: '令牌无效' });
 
-        // 如果带有入住/退房时间，则进行时效验证
+        // 如果提供了 groupId，检查临时二维码状态
+        if (groupId) {
+            const tempQr = await redis.get(`temp_qr:${groupId}`);
+            if (tempQr) {
+                const qrData = typeof tempQr === 'string' ? JSON.parse(tempQr) : tempQr;
+                if (qrData.status === 'disabled') {
+                    return res.status(200).json({
+                        valid: false,
+                        reason: 'disabled',
+                        message: '您的专属AI管家已被停用，请联系前台获取新的二维码！'
+                    });
+                }
+            } else {
+                // 如果没有这个 groupId 的记录，也算无效
+                return res.status(200).json({
+                    valid: false,
+                    reason: 'invalid_group',
+                    message: '二维码无效'
+                });
+            }
+        }
+
+        // 时效验证（原有逻辑）
         if (checkin && checkout) {
             const now = new Date();
             const beijingNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }));
@@ -54,7 +77,6 @@ export default async function handler(req, res) {
             }
         }
 
-        // 一切正常
         return res.status(200).json({ valid: true });
     } catch (err) {
         return res.status(500).json({ error: '服务错误' });
