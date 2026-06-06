@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>山予海AI智能管家</title>
+    <title>山予海 · 智能管家</title>
     <style>
         body { font-family: 'PingFang SC','Microsoft YaHei',sans-serif; background: #f0f4f8; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
         .chat-container { max-width: 600px; width: 100%; background: white; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); display: flex; flex-direction: column; height: 90vh; }
@@ -30,12 +30,12 @@
 <div class="chat-container" id="chatContainer">
     <div id="loadingMsg" style="display:flex; justify-content:center; align-items:center; height:100%;">验证中...</div>
     <div id="waitingMsg" class="fullscreen-msg" style="display:none;">
-        <h3>🕒 您的专属AI管家正在来的路上······</h3>
+        <h3>🕒 等待分配</h3>
         <p id="waitingText"></p>
     </div>
     <div id="expiredMsg" class="fullscreen-msg" style="display:none;">
         <h3>👋 管家已过期</h3>
-        <p>您的AI专属管家已过期，很高兴陪您一起度过这场难忘的假期。下次再见，我在山予海永远等您。</p>
+        <p>您的AI专属管家已过期，很高兴陪您一起度过这场难忘的度假。下次再见，我在山予海永远等您。</p>
     </div>
     <div id="chatInterface" style="display:none; flex-direction: column; height: 100%;">
         <div class="chat-header">
@@ -57,7 +57,7 @@
     const token = urlParams.get('token');
     const checkin = urlParams.get('checkin');
     const checkout = urlParams.get('checkout');
-    const groupId = urlParams.get('groupId') || ''; // 新增
+    const groupId = urlParams.get('groupId') || '';
 
     if (!currentRoom || !token) {
         document.getElementById('loadingMsg').innerHTML = '<h3>参数错误</h3>';
@@ -67,6 +67,8 @@
 
     let lastMessageTime = null;
     let pollingTimer = null;
+    let isSending = false;           // 防止重复发送
+    let messageKeys = new Set();     // 用于去重 (time_text)
 
     async function verifyRoom() {
         try {
@@ -96,24 +98,41 @@
     }
 
     function startChat() {
-        lastMessageTime = null;
-        initialLoad();
-        pollingTimer = setInterval(pollNewMessages, 5000);
+        // 防止重复绑定事件
+        const input = document.getElementById('messageInput');
+        input.removeEventListener('keypress', onEnterPress);
+        input.addEventListener('keypress', onEnterPress);
 
-        document.getElementById('messageInput').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') sendMessage();
+        // 先清空旧轮询
+        if (pollingTimer) clearInterval(pollingTimer);
+
+        // 先初始化加载所有历史消息，然后再开始轮询
+        initialLoad().then(() => {
+            // 启动轮询（每5秒拉取新消息）
+            pollingTimer = setInterval(pollNewMessages, 5000);
         });
     }
 
+    function onEnterPress(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            sendMessage();
+        }
+    }
+
     async function sendMessage() {
+        if (isSending) return;
         const input = document.getElementById('messageInput');
         const text = input.value.trim();
         if (!text) return;
 
+        isSending = true;
+        document.getElementById('sendBtn').disabled = true;
+
+        // 立即在界面添加客人消息
         const localTime = new Date().toISOString();
         appendMessage('user', text, localTime);
         input.value = '';
-        document.getElementById('sendBtn').disabled = true;
 
         try {
             const res = await fetch('/api/ai-chat', {
@@ -123,66 +142,94 @@
             });
             const data = await res.json();
             if (data.reply) {
+                // AI 回复直接追加，不用从后端再拉取，避免重复
                 appendMessage('ai', data.reply, new Date().toISOString());
             }
         } catch (err) {
             appendMessage('ai', '抱歉，服务暂时不可用，请稍后再试。', new Date().toISOString());
         } finally {
+            isSending = false;
             document.getElementById('sendBtn').disabled = false;
         }
     }
 
+    // 追加消息到界面，并更新 lastMessageTime 和去重集合
     function appendMessage(sender, text, time) {
-        const exist = document.querySelector(`[data-time="${time}"][data-text="${text}"]`);
-        if (exist) return;
+        const key = `${time}_${text}`;
+        if (messageKeys.has(key)) return;   // 已存在，跳过
+        messageKeys.add(key);
 
         const chatBox = document.getElementById('chatMessages');
         const msgDiv = document.createElement('div');
         msgDiv.className = `message ${sender}`;
-        msgDiv.setAttribute('data-time', time);
-        msgDiv.setAttribute('data-text', text);
         msgDiv.innerHTML = `<div class="bubble">${text}</div>`;
         chatBox.appendChild(msgDiv);
         chatBox.scrollTop = chatBox.scrollHeight;
 
+        // 更新最后一条消息的时间（用于增量拉取）
         if (!lastMessageTime || new Date(time) > new Date(lastMessageTime)) {
             lastMessageTime = time;
         }
     }
 
-    async function pollNewMessages() {
-        try {
-            let url = `/api/frontdesk?password=guest&action=chat_messages&room=${encodeURIComponent(currentRoom)}`;
-            if (groupId) url += `&groupId=${encodeURIComponent(groupId)}`;
-            if (lastMessageTime) url += `&since=${encodeURIComponent(lastMessageTime)}`;
-
-            const res = await fetch(url);
-            const data = await res.json();
-            if (data.messages && data.messages.length > 0) {
-                for (const m of data.messages) {
-                    let sender = m.sender === 'guest' ? 'user' : (m.sender === 'frontdesk' ? 'frontdesk' : 'ai');
-                    appendMessage(sender, m.text, m.time);
-                }
-            }
-        } catch (e) {}
-    }
-
+    // 初始加载：获取所有历史消息，并渲染
     async function initialLoad() {
         try {
             let url = `/api/frontdesk?password=guest&action=chat_messages&room=${encodeURIComponent(currentRoom)}`;
             if (groupId) url += `&groupId=${encodeURIComponent(groupId)}`;
+
             const res = await fetch(url);
             const data = await res.json();
+            const chatBox = document.getElementById('chatMessages');
+            chatBox.innerHTML = '';  // 清空默认提示
+            messageKeys.clear();     // 清空去重集合
+
             if (data.messages && data.messages.length > 0) {
-                const chatBox = document.getElementById('chatMessages');
-                chatBox.innerHTML = '';
                 for (const m of data.messages) {
                     let sender = m.sender === 'guest' ? 'user' : (m.sender === 'frontdesk' ? 'frontdesk' : 'ai');
                     appendMessage(sender, m.text, m.time);
                 }
+                // 设置最后一条消息的时间
+                const lastMsg = data.messages[data.messages.length - 1];
+                lastMessageTime = lastMsg.time;
+            } else {
+                lastMessageTime = null;
+            }
+        } catch (e) {
+            console.error('初始加载失败', e);
+        }
+    }
+
+    // 轮询：仅获取 since 之后的新消息
+    async function pollNewMessages() {
+        try {
+            if (!lastMessageTime) return; // 还没有任何消息，不轮询
+
+            let url = `/api/frontdesk?password=guest&action=chat_messages&room=${encodeURIComponent(currentRoom)}`;
+            if (groupId) url += `&groupId=${encodeURIComponent(groupId)}`;
+            url += `&since=${encodeURIComponent(lastMessageTime)}`;
+
+            const res = await fetch(url);
+            const data = await res.json();
+            if (data.messages && data.messages.length > 0) {
+                for (const m of data.messages) {
+                    let sender = m.sender === 'guest' ? 'user' : (m.sender === 'frontdesk' ? 'frontdesk' : 'ai');
+                    // 注意：轮询回来的新消息可能包含客人自己刚发的内容，但已通过去重跳过
+                    appendMessage(sender, m.text, m.time);
+                }
+                // 更新最后消息时间
+                const lastNew = data.messages[data.messages.length - 1];
+                if (new Date(lastNew.time) > new Date(lastMessageTime)) {
+                    lastMessageTime = lastNew.time;
+                }
             }
         } catch (e) {}
     }
+
+    // 页面关闭时清除定时器
+    window.addEventListener('beforeunload', () => {
+        if (pollingTimer) clearInterval(pollingTimer);
+    });
 </script>
 </body>
 </html>
