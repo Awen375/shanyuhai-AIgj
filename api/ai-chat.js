@@ -8,7 +8,7 @@ const redis = new Redis({
 const hotelInfo = `
 【民宿定位与导航】
 - 民宿坐标（高德/百度）：120.207718,26.920075（请替换为实际精确坐标）
-- 导航链接：https://uri.amap.com/marker?position=120.1600,26.8900&name=山予海民宿
+- 导航链接：https://uri.amap.com/marker?position=120.207718,26.920075&name=山予海民宿
 - 点击链接即可直接启动地图导航，方便您快速到达～
 
 【民宿基本信息】
