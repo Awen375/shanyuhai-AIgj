@@ -22,19 +22,16 @@
         .chat-input button { margin-left: 10px; padding: 12px 24px; background: #1e90ff; color: white; border: none; border-radius: 25px; cursor: pointer; font-weight: 600; }
         .chat-input button:disabled { background: #ccc; cursor: not-allowed; }
         .notice { text-align: center; color: #888; font-size: 14px; margin-top: 5px; }
-        /* 欢迎页 */
         .welcome-screen { display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100%; text-align: center; padding: 20px; }
         .welcome-screen h1 { color: #0b4f6c; font-size: 32px; margin-bottom: 20px; }
         .welcome-screen p { color: #666; margin-bottom: 30px; line-height: 1.6; }
         .welcome-screen button { padding: 15px 40px; background: #1e90ff; color: white; border: none; border-radius: 30px; font-size: 18px; cursor: pointer; }
-        /* 全屏提示 */
         .fullscreen-msg { display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100%; text-align: center; padding: 20px; }
         .fullscreen-msg h3 { color: #0b4f6c; }
     </style>
 </head>
 <body>
 <div class="chat-container" id="chatContainer">
-    <!-- 欢迎页（默认显示） -->
     <div id="welcomeScreen" class="welcome-screen">
         <img src="/logo.jpg" alt="logo" class="logo-icon" style="width: 80px; height: auto;" />
         <h1>山予海AI管家</h1>
@@ -42,7 +39,6 @@
         <button onclick="startJourney()">✨ 开始智能之旅</button>
     </div>
 
-    <!-- 其他提示页（隐藏） -->
     <div id="loadingMsg" class="fullscreen-msg" style="display:none;"><h3>验证中...</h3></div>
     <div id="waitingMsg" class="fullscreen-msg" style="display:none;">
         <h3>🕒 您的AI管家正在来的路上······</h3>
@@ -57,7 +53,6 @@
         <p id="disabledText">您的专属AI管家已被停用，请联系前台获取新的二维码！</p>
     </div>
 
-    <!-- 聊天界面（隐藏） -->
     <div id="chatInterface" style="display:none; flex-direction: column; height: 100%;">
         <div class="chat-header">
             <h2>山予海 AI 管家</h2>
@@ -90,7 +85,6 @@
     const messageKeys = new Set();
     const recentSentTexts = new Map();
 
-    // 点击“开始智能之旅”后，验证房间并进入聊天
     function startJourney() {
         document.getElementById('welcomeScreen').style.display = 'none';
         document.getElementById('loadingMsg').style.display = 'flex';
@@ -221,6 +215,9 @@
                 lastMessageTime = data.messages[data.messages.length - 1].time;
             } else {
                 lastMessageTime = null;
+                // ★ 首次进入且无历史记录，AI自动发送自我介绍
+                const introText = '嗨，我是你的专属AI管家小予，24小时为你服务！想了解民宿设施、周边游玩、呼叫前台，随时找我哦～';
+                appendMessage('ai', introText, new Date().toISOString());
             }
         } catch (e) {
             console.error('初始加载失败', e);
