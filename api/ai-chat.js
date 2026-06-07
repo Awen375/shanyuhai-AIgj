@@ -142,7 +142,7 @@ async function isFrontdeskOnline() {
 
 export default async function handler(req, res) {
     if (req.method !== 'POST') return res.status(405).json({ error: '只支持POST' });
-    const { question, room, groupId } = req.body || {};
+    const { question, room, groupId, checkin, checkout } = req.body || {};
     if (!question) return res.status(400).json({ error: '请输入问题' });
 
     try {
@@ -218,6 +218,7 @@ ${tideHint}
 8. 当客人询问“民宿定位”、“民宿导航”、“怎么去民宿”、“民宿地址”等位置问题时，直接回复民宿地址并附上导航链接：https://uri.amap.com/marker?position=120.207718,26.920075&name=山予海民宿。
 9. ★ 景点定位交互策略：当客人询问旅游攻略、景点推荐，或者你主动推荐景点后，先介绍景点和攻略，然后一定要主动询问：“需要我发给你XX景点的导航链接吗？直接点击就能导航过去～” 。如果客人回复“需要”、“好的”、“发我”、“可以”、“定位”等肯定性词语，你必须根据【周边景点定位与导航】表格，给出该景点的正确导航链接。如果客人没有指定具体景点，你可以追问是哪个景点。注意，链接必须完整且可以点击。
 10. 当距离景点的开车时间超过2分钟并在15分钟内那么建议客人可以租用民宿对面的共享电动车使用。当开车时间超过15分钟则建议客人开车前往或者包车前往。
+11. 每次回答完问题后，都要自然地追问一句，比如“还有其他想了解的吗？”、“需要我帮你准备什么吗？”等，让对话继续下去。
 
 【重要提醒】
 潮汐和赶海时间可能有误差，如需最准确信息，可以帮你呼叫前台哦～需要的话回复"呼叫前台"就OK！
@@ -227,6 +228,15 @@ ${hotelInfo}
 
 【补充知识库】
 ${knowledgeText || '暂无'}`;
+
+        // ★ 退房关怀：若当天是退房日且当前时间 >= 7:00，则提醒 AI 插入退房问候
+        if (checkout) {
+            const checkoutDate = checkout.substring(0, 8);
+            const todayBeijing = beijingTime.toISOString().slice(0, 10).replace(/-/g, '');
+            if (todayBeijing === checkoutDate && hour >= 7) {
+                systemPrompt += `\n\n【退房关怀】今天是客人的退房日，请在回答完主要问题后，自然地加上退房相关提醒，比如：“对了，今天是您退房的日子哦～退房时间是中午12:00前，如果需要延迟退房可以告诉我。行李也可以先寄存在前台，退房后还能再玩半天！”语气要轻松，不要生硬。`;
+            }
+        }
 
         const matched = await matchKeywords(question);
         console.log('关键词匹配结果:', JSON.stringify(matched));
