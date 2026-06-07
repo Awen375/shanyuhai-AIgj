@@ -73,7 +73,7 @@
             <input type="text" id="messageInput" placeholder="输入您的问题...">
             <button id="sendBtn" onclick="sendMessage()">发送</button>
         </div>
-        <div class="notice">需要人工帮助？请回复"叫前台"</div>
+        <div class="notice">需要人工帮助？请回复"呼叫前台"</div>
         <div class="support-text">本程序由，山予海AI大模型团队提供技术支持</div>
     </div>
 </div>
@@ -196,7 +196,7 @@
             const res = await fetch('/api/ai-chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ question: text, room: currentRoom, groupId })
+                body: JSON.stringify({ question: text, room: currentRoom, groupId, checkin, checkout })
             });
             if (!res.ok) throw new Error('AI 服务异常');
             const data = await res.json();
@@ -216,7 +216,6 @@
         }
     }
 
-    // ★ 关键修改：将链接渲染为导航按钮
     function appendMessage(sender, text, time) {
         const key = `${time}_${sender}_${text}`;
         if (messageKeys.has(key)) return;
@@ -226,7 +225,6 @@
         const msgDiv = document.createElement('div');
         msgDiv.className = `message ${sender}`;
         
-        // 匹配 http/https 链接并替换为按钮
         const urlRegex = /(https?:\/\/[^\s]+)/g;
         let htmlContent = text.replace(urlRegex, (url) => {
             return `<a href="${url}" target="_blank" class="nav-btn">📍 点击导航</a>`;
@@ -245,7 +243,7 @@
         const chatBox = document.getElementById('chatMessages');
         const buttonsDiv = document.createElement('div');
         buttonsDiv.className = 'quick-buttons';
-        const questions = ['早餐时间', 'WiFi密码', '附近景点', '退房时间', '接送服务', '呼叫前台'];
+        const questions = ['日出时间', '早餐时间', 'WiFi密码', '附近景点', '退房时间', '接送服务', '呼叫前台'];
         questions.forEach(q => {
             const btn = document.createElement('button');
             btn.className = 'quick-btn';
