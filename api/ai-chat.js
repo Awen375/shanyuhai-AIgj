@@ -84,18 +84,26 @@ async function matchKeywords(text) {
     if (!keywordsData) return null;
     const list = typeof keywordsData === 'string' ? JSON.parse(keywordsData) : keywordsData;
     if (!Array.isArray(list)) return null;
+    
+    // ★ 按优先级排序：先匹配 room_msg，再匹配 other，最后匹配其他
     let matchedOther = null;
+    let matchedRoomMsg = null;
+    let matchedNormal = null;
+    
     for (const item of list) {
         if (text.includes(item.keyword)) {
-            if (item.type === 'room_msg') return item;
+            if (item.type === 'room_msg') {
+                matchedRoomMsg = item;  // 房客消息优先级最高
+                break;  // 找到就立即返回
+            }
             if (item.type === 'other') {
                 matchedOther = item;
                 continue;
             }
-            return item;
+            if (!matchedNormal) matchedNormal = item;
         }
     }
-    return matchedOther;
+    return matchedRoomMsg || matchedNormal || matchedOther;
 }
 
 async function isFrontdeskOnline() {
@@ -111,7 +119,7 @@ export default async function handler(req, res) {
     try {
         const aiSettings = await getAISettings();
 
-        // 接管状态检查（接管基于 room，但接管时会记录 groupId）
+        // 接管状态检查
         const takeoverData = await redis.get(`takeover:${room}`);
         const isTakeover = takeoverData && (typeof takeoverData === 'object' ? takeoverData.active : JSON.parse(takeoverData).active);
 
@@ -151,21 +159,36 @@ export default async function handler(req, res) {
 
         let tideHint = isSpringTide ? '近期正值大潮，退潮幅度大，赶海收获会更多哦！' : '目前是小潮期，海滩暴露面积较小，但依然可以享受赶海乐趣。';
 
-        let systemPrompt = `你是"${aiSettings.name}"，山予海民宿的专属AI管家，性格亲切活泼，像朋友一样和客人交流。
+        // ★ 优化后的系统提示词，让 AI 更像朋友
+        let systemPrompt = `你是"${aiSettings.name}"，山予海民宿的专属AI管家。
+
+🎭 你的性格特点：
+- 热情开朗，像认识很久的朋友一样和客人聊天
+- 说话自然随意，偶尔带点俏皮和小幽默
+- 善用Emoji表情，让对话更生动活泼 😊🌊✨
+- 对于客人的问题，不仅给出答案，还会像朋友一样多分享一些实用小贴士
+- 在回答完问题后，可以自然地关心一下客人的需求
+
+💬 说话风格示例：
+- 不用"您好，请问有什么可以帮您"，而用"嘿！有什么想了解的尽管问我～"
+- 不用"以下是相关信息"，而用"我跟你说哦，我们家..."
+- 不用"感谢您的咨询"，而用"好啦，还有其他想知道的吗？我随时都在～"
+- 对话中不用“*来隔开”而用“ 空格来隔开”
+
+📋 当前信息：
 现在是北京时间 ${todayStr} ${timeStr}。${activityHint}
 ${tideHint}
-当客人询问赶海时间时，请根据当前日期估算退潮时段（每天退潮大约比前一天推迟40-50分钟），并告诉客人最佳赶海时间是退潮后2小时内。可以结合农历日期判断大潮小潮，并给出相应的建议。如果无法精确计算，可建议客人咨询前台获取准确的潮汐表，同时提供赶海技巧和安全提示。
 
 【核心规则】
-1. 你只能回答与山予海民宿及相关旅游的问题。遇到完全无关的问题，请礼貌拒绝。
-2. 理解客人的同义表达。
-3. 如果客人问题模糊，主动追问。
-4. 用第一人称，亲切自然，适当使用emoji。
-5. 如果遇到需要人工处理的问题，提示拨打前台电话 0593-8850999。
-6. 如果客人问到关于日落日出的时间以及潮汐时间，按照真实的时间回复。
+1. 只回答与山予海民宿及相关旅游的问题，遇到无关问题礼貌拒绝但语气轻松
+2. 理解客人的同义表达，别太死板
+3. 如果客人问题模糊，像朋友一样追问确认
+4. 每句话都尽量使用第一人称，亲切自然
+5. 遇到需要人工处理的问题，提醒拨打前台 0593-8850999
+6. 关于日出、日落、潮汐时间，按真实情况回复
 
 【重要提醒】
-关于潮汐和赶海时间的建议为估算值，存在不确定性。如需获取最准确的潮汐信息，建议咨询前台的小伙伴。需要我帮您呼叫前台吗？如需呼叫，请回复“呼叫前台”。
+潮汐和赶海时间可能有误差，如需最准确信息，可以帮你呼叫前台哦～需要的话回复"呼叫前台"就OK！
 
 【民宿完整信息】
 ${hotelInfo}
@@ -176,14 +199,13 @@ ${knowledgeText || '暂无'}`;
         const matched = await matchKeywords(question);
         console.log('关键词匹配结果:', JSON.stringify(matched));
 
-        // ★ 房客消息处理（根据上下班时间和前台在线状态决定）
+        // 房客消息处理
         if (matched && matched.type === 'room_msg') {
             const online = await isFrontdeskOnline();
             console.log('前台在线状态:', online);
 
             const isWorkingHour = (hour >= 8 && hour < 23);
 
-            // 上班时间：无论是否在线，只要在线就接管，不在线提示打电话
             if (isWorkingHour) {
                 if (online) {
                     await redis.set(`notification:${Date.now()}`, JSON.stringify({
@@ -194,14 +216,13 @@ ${knowledgeText || '暂无'}`;
                         active: true, startTime: Date.now(), lastGuestMsg: Date.now(), groupId: groupId || ''
                     }));
                     console.log(`接管房间已设置: takeover:${room}，群组：${groupId || '无'}`);
-                    return res.status(200).json({ reply: '正在通知前台的小伙伴，接通中请稍等...' });
+                    return res.status(200).json({ reply: '好的您稍等，我现在就通知前台的小伙伴与您联系，您不要离开正在接通中请稍候......' });
                 } else {
                     return res.status(200).json({
                         reply: '接通失败~当前前台的小伙伴不在线，您可以稍后再试，或者拨打前台电话联系前台。前台电话为：0593-8850999'
                     });
                 }
             } else {
-                // 下班时间：如果前台在线，仍然可以触发接管
                 if (online) {
                     await redis.set(`notification:${Date.now()}`, JSON.stringify({
                         room: room || '未知', question, reply: '', keyword: matched.keyword,
@@ -211,7 +232,7 @@ ${knowledgeText || '暂无'}`;
                         active: true, startTime: Date.now(), lastGuestMsg: Date.now(), groupId: groupId || ''
                     }));
                     console.log(`接管房间已设置（下班时间前台在线）: takeover:${room}，群组：${groupId || '无'}`);
-                    return res.status(200).json({ reply: '正在通知前台的小伙伴，接通中请稍等...' });
+                    return res.status(200).json({ reply: '好的您稍等，我现在就通知前台的小伙伴与您联系，您不要离开正在接通中请稍候......' });
                 } else {
                     return res.status(200).json({
                         reply: '我们前台的小伙伴们都下班啦！目前是下班时间，有什么问题您可以先问我我可以帮您处理的。上班时间：8:00-23:00'
@@ -228,7 +249,7 @@ ${knowledgeText || '暂无'}`;
                 replyBody = matched.reply.replace(/（[^）]+）/, '').trim();
                 instruction = bracketMatch[1];
             }
-            if (replyBody) systemPrompt += `\n\n【回复要点】请根据以下内容生成回复：${replyBody}`;
+            if (replyBody) systemPrompt += `\n\n【回复要点】请用朋友聊天的语气回复：${replyBody}`;
             if (instruction) systemPrompt += `\n【回复指示】请严格遵循以下要求来调整回复的语气、风格或内容：${instruction}`;
         }
 
@@ -244,7 +265,7 @@ ${knowledgeText || '暂无'}`;
                     { role: 'system', content: systemPrompt },
                     { role: 'user', content: question }
                 ],
-                temperature: 0.7,
+                temperature: 0.8,
                 max_tokens: 800
             })
         });
