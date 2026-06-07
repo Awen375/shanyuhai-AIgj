@@ -13,18 +13,17 @@ export default async function handler(req, res) {
     const token = url.searchParams.get('token');
     const checkin = url.searchParams.get('checkin');
     const checkout = url.searchParams.get('checkout');
-    const groupId = url.searchParams.get('groupId');   // 新增
+    const groupId = url.searchParams.get('groupId');
 
     if (!room || !token) return res.status(400).json({ error: '缺少房间或令牌' });
 
     try {
-        // 验证固定房间令牌
         const roomData = await redis.get(`room:${room}`);
         if (!roomData) return res.status(200).json({ valid: false, reason: '房间不存在' });
         const saved = typeof roomData === 'string' ? JSON.parse(roomData) : roomData;
         if (saved.token !== token) return res.status(200).json({ valid: false, reason: '令牌无效' });
 
-        // 如果提供了 groupId，检查临时二维码状态
+        // 检查临时二维码状态
         if (groupId) {
             const tempQr = await redis.get(`temp_qr:${groupId}`);
             if (tempQr) {
@@ -37,7 +36,6 @@ export default async function handler(req, res) {
                     });
                 }
             } else {
-                // 如果没有这个 groupId 的记录，也算无效
                 return res.status(200).json({
                     valid: false,
                     reason: 'invalid_group',
@@ -46,7 +44,7 @@ export default async function handler(req, res) {
             }
         }
 
-        // 时效验证（原有逻辑）
+        // 时效验证
         if (checkin && checkout) {
             const now = new Date();
             const beijingNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }));
