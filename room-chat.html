@@ -28,6 +28,8 @@
         .welcome-screen button { padding: 15px 40px; background: #1e90ff; color: white; border: none; border-radius: 30px; font-size: 18px; cursor: pointer; }
         .fullscreen-msg { display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100%; text-align: center; padding: 20px; }
         .fullscreen-msg h3 { color: #0b4f6c; }
+        .status-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-left: 5px; }
+        .support-text { text-align: center; color: #aaa; font-size: 12px; margin-top: 5px; }
     </style>
 </head>
 <body>
@@ -56,7 +58,11 @@
     <div id="chatInterface" style="display:none; flex-direction: column; height: 100%;">
         <div class="chat-header">
             <h2>山予海 AI 管家</h2>
-            <p id="roomInfo" style="color:#888;"></p>
+            <p id="roomInfo" style="color:#888;">
+                房间：<span id="roomNumber"></span>
+                <span class="status-dot" id="statusDot" style="background: gray;"></span>
+                <span id="statusText" style="font-size: 12px;"></span>
+            </p>
         </div>
         <div class="chat-messages" id="chatMessages"></div>
         <div class="chat-input">
@@ -64,6 +70,7 @@
             <button id="sendBtn" onclick="sendMessage()">发送</button>
         </div>
         <div class="notice">需要人工帮助？请回复“叫前台”</div>
+        <div class="support-text">本程序由，山予海AI大模型团队提供技术支持</div>
     </div>
 </div>
 
@@ -102,7 +109,7 @@
             if (data.valid) {
                 document.getElementById('loadingMsg').style.display = 'none';
                 document.getElementById('chatInterface').style.display = 'flex';
-                document.getElementById('roomInfo').innerText = `房间：${currentRoom}`;
+                document.getElementById('roomNumber').innerText = currentRoom;
                 startChat();
             } else {
                 document.getElementById('loadingMsg').style.display = 'none';
@@ -130,9 +137,34 @@
 
         if (pollingTimer) clearInterval(pollingTimer);
 
+        // 定期检查前台在线状态
+        checkFrontdeskStatus();
+        setInterval(checkFrontdeskStatus, 15000);
+
         initialLoad().then(() => {
             pollingTimer = setInterval(pollNewMessages, 5000);
         });
+    }
+
+    // 检查前台在线状态并更新指示灯
+    async function checkFrontdeskStatus() {
+        try {
+            const res = await fetch(`/api/frontdesk?action=heartbeat&password=guest`);
+            const online = res.ok;
+            const dot = document.getElementById('statusDot');
+            const txt = document.getElementById('statusText');
+            if (online) {
+                dot.style.background = '#27ae60'; // 绿色
+                txt.innerText = '前台在线';
+            } else {
+                dot.style.background = '#e74c3c'; // 红色
+                txt.innerText = '前台离线';
+            }
+        } catch (e) {
+            // 请求失败视为离线
+            document.getElementById('statusDot').style.background = '#e74c3c';
+            document.getElementById('statusText').innerText = '前台离线';
+        }
     }
 
     function onEnterPress(e) {
@@ -215,7 +247,7 @@
                 lastMessageTime = data.messages[data.messages.length - 1].time;
             } else {
                 lastMessageTime = null;
-                // ★ 首次进入且无历史记录，AI自动发送自我介绍
+                // 首次进入且无历史记录，AI自动发送自我介绍
                 const introText = '嗨，我是你的专属AI管家小予，24小时为你服务！想了解民宿设施、周边游玩、呼叫前台，随时找我哦～';
                 appendMessage('ai', introText, new Date().toISOString());
             }
