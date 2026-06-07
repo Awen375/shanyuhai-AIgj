@@ -176,16 +176,16 @@ ${knowledgeText || '暂无'}`;
         const matched = await matchKeywords(question);
         console.log('关键词匹配结果:', JSON.stringify(matched));
 
-        // ★ 房客消息处理（优化上下班逻辑）
+        // ★ 房客消息处理（根据上下班时间和前台在线状态决定）
         if (matched && matched.type === 'room_msg') {
             const online = await isFrontdeskOnline();
             console.log('前台在线状态:', online);
 
-            const isWorkingHour = (hour >= 8 && hour < 23);  // 上班时间 8:00-23:00
+            const isWorkingHour = (hour >= 8 && hour < 23);
 
+            // 上班时间：无论是否在线，只要在线就接管，不在线提示打电话
             if (isWorkingHour) {
                 if (online) {
-                    // 上班时间且前台在线：接管房间
                     await redis.set(`notification:${Date.now()}`, JSON.stringify({
                         room: room || '未知', question, reply: '', keyword: matched.keyword,
                         type: 'room_msg', time: new Date().toISOString(), status: 'pending', groupId: groupId || ''
@@ -196,16 +196,27 @@ ${knowledgeText || '暂无'}`;
                     console.log(`接管房间已设置: takeover:${room}，群组：${groupId || '无'}`);
                     return res.status(200).json({ reply: '正在通知前台的小伙伴，接通中请稍等...' });
                 } else {
-                    // 上班时间但前台不在线
                     return res.status(200).json({
                         reply: '接通失败~当前前台的小伙伴不在线，您可以稍后再试，或者拨打前台电话联系前台。前台电话为：0593-8850999'
                     });
                 }
             } else {
-                // 下班时间 (23:00 - 8:00)：不管前台是否在线，都不接管
-                return res.status(200).json({
-                    reply: '我们前台的小伙伴们都下班啦！目前是下班时间，有什么问题您可以先问我我可以帮您处理的。上班时间：8:00-23:00'
-                });
+                // 下班时间：如果前台在线，仍然可以触发接管
+                if (online) {
+                    await redis.set(`notification:${Date.now()}`, JSON.stringify({
+                        room: room || '未知', question, reply: '', keyword: matched.keyword,
+                        type: 'room_msg', time: new Date().toISOString(), status: 'pending', groupId: groupId || ''
+                    }));
+                    await redis.set(`takeover:${room}`, JSON.stringify({
+                        active: true, startTime: Date.now(), lastGuestMsg: Date.now(), groupId: groupId || ''
+                    }));
+                    console.log(`接管房间已设置（下班时间前台在线）: takeover:${room}，群组：${groupId || '无'}`);
+                    return res.status(200).json({ reply: '正在通知前台的小伙伴，接通中请稍等...' });
+                } else {
+                    return res.status(200).json({
+                        reply: '我们前台的小伙伴们都下班啦！目前是下班时间，有什么问题您可以先问我我可以帮您处理的。上班时间：8:00-23:00'
+                    });
+                }
             }
         }
 
