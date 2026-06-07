@@ -52,7 +52,7 @@
     </div>
     <div id="expiredMsg" class="fullscreen-msg" style="display:none;">
         <h3>👋 您的AI管家跟您说再见了</h3>
-        <p>您的AI专属管家已经准备好服务下一位旅客了。他让我转告您：很高兴跟您认识，也很高兴能陪您一起度过这场难忘的假期。您是我的房客，但更是我的朋友。下次再见了，我小予在山予海永远等您。</p>
+        <p>您的AI专属管家已经准备好服务下一位旅客了。他让我转告您：很高兴跟您认识，也很高兴能陪您一起度过这场难忘的假期。下次再见，我在山予海永远等您。</p>
     </div>
     <div id="disabledMsg" class="fullscreen-msg" style="display:none;">
         <h3>⛔ 您的专属AI管家已停用</h3>
@@ -96,6 +96,7 @@
     const messageKeys = new Set();
     const recentSentTexts = new Map();
     let lastAIReply = '';
+    const userMessageTimestamps = new Map();
 
     function startJourney() {
         document.getElementById('welcomeScreen').style.display = 'none';
@@ -189,14 +190,21 @@
         const localTime = new Date().toISOString();
         appendMessage('user', text, localTime);
         recentSentTexts.set(text, Date.now());
-        
+        userMessageTimestamps.set(text, Date.now());
+
         if (!customText) input.value = '';
 
         try {
             const res = await fetch('/api/ai-chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ question: text, room: currentRoom, groupId, checkin, checkout })
+                body: JSON.stringify({ 
+                    question: text, 
+                    room: currentRoom, 
+                    groupId,
+                    checkin: checkin,    // ★ 传递入住时间
+                    checkout: checkout   // ★ 传递退房时间
+                })
             });
             if (!res.ok) throw new Error('AI 服务异常');
             const data = await res.json();
@@ -221,16 +229,32 @@
         if (messageKeys.has(key)) return;
         messageKeys.add(key);
 
+        // 用户消息额外去重
+        if (sender === 'user') {
+            const msgTime = new Date(time).getTime();
+            for (const [msgText, msgTimestamp] of userMessageTimestamps.entries()) {
+                if (msgText === text && Math.abs(msgTime - msgTimestamp) < 3000) return;
+                if (Date.now() - msgTimestamp > 10000) userMessageTimestamps.delete(msgText);
+            }
+            userMessageTimestamps.set(text, msgTime);
+        }
+
         const chatBox = document.getElementById('chatMessages');
         const msgDiv = document.createElement('div');
         msgDiv.className = `message ${sender}`;
-        
+
+        // 将文本中的 URL 转换为可点击的导航按钮
         const urlRegex = /(https?:\/\/[^\s]+)/g;
         let htmlContent = text.replace(urlRegex, (url) => {
             return `<a href="${url}" target="_blank" class="nav-btn">📍 点击导航</a>`;
         });
+        if (!htmlContent.match(urlRegex)) {
+            // 没有匹配到链接则直接显示原文
+            msgDiv.innerHTML = `<div class="bubble">${htmlContent}</div>`;
+        } else {
+            msgDiv.innerHTML = `<div class="bubble">${htmlContent}</div>`;
+        }
         
-        msgDiv.innerHTML = `<div class="bubble">${htmlContent}</div>`;
         chatBox.appendChild(msgDiv);
         chatBox.scrollTop = chatBox.scrollHeight;
 
@@ -243,7 +267,7 @@
         const chatBox = document.getElementById('chatMessages');
         const buttonsDiv = document.createElement('div');
         buttonsDiv.className = 'quick-buttons';
-        const questions = ['日出时间', '早餐时间', 'WiFi密码', '附近景点', '退房时间', '接送服务', '呼叫前台'];
+        const questions = ['早餐时间', 'WiFi密码', '附近景点', '退房时间', '接送服务', '呼叫前台'];
         questions.forEach(q => {
             const btn = document.createElement('button');
             btn.className = 'quick-btn';
