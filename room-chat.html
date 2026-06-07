@@ -73,7 +73,7 @@
             <input type="text" id="messageInput" placeholder="输入您的问题...">
             <button id="sendBtn" onclick="sendMessage()">发送</button>
         </div>
-        <div class="notice">需要人工帮助？请回复"呼叫前台"</div>
+        <div class="notice">需要人工帮助？请回复"叫前台"</div>
         <div class="support-text">本程序由，山予海AI大模型团队提供技术支持</div>
     </div>
 </div>
@@ -202,8 +202,8 @@
                     question: text, 
                     room: currentRoom, 
                     groupId,
-                    checkin: checkin,    // ★ 传递入住时间
-                    checkout: checkout   // ★ 传递退房时间
+                    checkin: checkin,
+                    checkout: checkout
                 })
             });
             if (!res.ok) throw new Error('AI 服务异常');
@@ -229,31 +229,27 @@
         if (messageKeys.has(key)) return;
         messageKeys.add(key);
 
-        // 用户消息额外去重
+        // 用户消息额外去重：5秒内相同文本+相同发送者视为重复
         if (sender === 'user') {
+            const now = Date.now();
             const msgTime = new Date(time).getTime();
-            for (const [msgText, msgTimestamp] of userMessageTimestamps.entries()) {
-                if (msgText === text && Math.abs(msgTime - msgTimestamp) < 3000) return;
-                if (Date.now() - msgTimestamp > 10000) userMessageTimestamps.delete(msgText);
+            for (const [msgText, timestamp] of userMessageTimestamps.entries()) {
+                if (msgText === text && Math.abs(now - timestamp) < 5000) return;
+                if (now - timestamp > 8000) userMessageTimestamps.delete(msgText);
             }
-            userMessageTimestamps.set(text, msgTime);
+            userMessageTimestamps.set(text, now);
         }
 
         const chatBox = document.getElementById('chatMessages');
         const msgDiv = document.createElement('div');
         msgDiv.className = `message ${sender}`;
-
-        // 将文本中的 URL 转换为可点击的导航按钮
+        
+        // URL 转可点击按钮
         const urlRegex = /(https?:\/\/[^\s]+)/g;
         let htmlContent = text.replace(urlRegex, (url) => {
             return `<a href="${url}" target="_blank" class="nav-btn">📍 点击导航</a>`;
         });
-        if (!htmlContent.match(urlRegex)) {
-            // 没有匹配到链接则直接显示原文
-            msgDiv.innerHTML = `<div class="bubble">${htmlContent}</div>`;
-        } else {
-            msgDiv.innerHTML = `<div class="bubble">${htmlContent}</div>`;
-        }
+        msgDiv.innerHTML = `<div class="bubble">${htmlContent}</div>`;
         
         chatBox.appendChild(msgDiv);
         chatBox.scrollTop = chatBox.scrollHeight;
