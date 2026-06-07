@@ -7,9 +7,27 @@ const redis = new Redis({
 
 const hotelInfo = `
 【民宿定位与导航】
-- 民宿坐标（高德/百度）：120.207718,26.920075（请替换为实际精确坐标）
+- 民宿坐标（高德/百度）：120.207718,26.920075
 - 导航链接：https://uri.amap.com/marker?position=120.207718,26.920075&name=山予海民宿
 - 点击链接即可直接启动地图导航，方便您快速到达～
+
+【周边景点定位与导航】
+- 三沙镇吃饭一条街：坐标 120.224799,26.927047，导航链接 https://uri.amap.com/marker?position=120.224799,26.927047&name=三沙镇美食街
+- 东壁村日落观景台：坐标 120.198403,26.925036，导航链接 https://uri.amap.com/marker?position=120.198403,26.925036&name=东壁村日落观景台
+- 花竹一号日出打卡点：坐标 120.240865,26.947751，导航链接 https://uri.amap.com/marker?position=120.240865,26.947751&name=花竹日出观景台
+- 小皓赶海沙滩：坐标 120.155448,26.933461，导航链接 https://uri.amap.com/marker?position=120.155448,26.933461&name=小皓赶海沙滩
+- 高罗沙滩：坐标 120.105532,26.757267，导航链接 https://uri.amap.com/marker?position=120.105532,26.757267&name=高罗沙滩
+- 大京沙滩：坐标 120.115942,26.702855，导航链接 https://uri.amap.com/marker?position=120.115942,26.702855&name=大京沙滩
+- 下尾岛：坐标 120.128637,26.663443，导航链接 https://uri.amap.com/marker?position=120.128637,26.663443&name=下尾岛
+- 霞浦县城：坐标 120.032821,26.888728，导航链接 https://uri.amap.com/marker?position=120.032821,26.888728&name=霞浦县城
+- 霞浦动车站：坐标 120.039078,26.914876，导航链接 https://uri.amap.com/marker?position=120.039078,26.914876&name=霞浦动车站
+- 观影栈道：坐标 120.180098,26.931521，导航链接 https://uri.amap.com/marker?position=120.180098,26.931521&name=观影栈道
+- 太姥山：坐标 120.248550,27.105817，导航链接 https://uri.amap.com/marker?position=120.248550,27.105817&name=太姥山
+- 杨家溪：坐标 120.131214,27.030610，导航链接 https://uri.amap.com/marker?position=120.131214,27.030610&name=杨家溪
+- 虞公亭沙滩日落：坐标 120.191799,26.929545，导航链接 https://uri.amap.com/marker?position=120.191799,26.929545&name=虞公亭沙滩日落
+- 闾峡灯塔：坐标 120.142421,26.651158，导航链接 https://uri.amap.com/marker?position=120.142421,26.651158&name=闾峡灯塔
+- 丹湾观景台：坐标 120.116217,26.691568，导航链接 https://uri.amap.com/marker?position=120.116217,26.691568&name=丹湾观景台
+- 嵛山岛登船码头：坐标 120.251184,26.941964，导航链接 https://uri.amap.com/marker?position=120.251184,26.941964&name=嵛山岛登船码头
 
 【民宿基本信息】
 - 民宿名称：霞浦县山予海民宿
@@ -39,13 +57,19 @@ const hotelInfo = `
 【周边距离和交通时间】
 - 三沙镇吃饭一条街：1公里，开车约3分钟，步行约13分钟
 - 东壁村日落观景台：1.3公里，开车约3分钟，步行约15分钟
-- 最近的沙滩：开车约6分钟
+- 观影栈道：2.6公里，开车约7分钟
+- 虞公亭沙滩日落：开车约6分钟
 - 花竹一号日出打卡点：开车约15分钟
-- 小皓赶海沙滩：开车约15分钟
+- 小皓赶海沙滩：开车约16分钟
 - 霞浦县城：开车约30分钟
 - 高罗沙滩、大京沙滩：开车约1小时
 - 下尾岛：开车约1个半小时
 - 霞浦动车站：开车约35分钟
+- 杨家溪：开车约47分钟
+- 太姥山：开车约43分钟
+- 闾峡灯塔：开车约1小时39分
+- 丹湾观景台：开车约1小时16分
+- 嵛山岛登船码头：开车约12分，如果提到有关于嵛山岛的登船事宜时建议客人提前打开第三方购票软件提前查看班次以及返程的时间等
 
 【旅游攻略推荐】
 两天一夜经典游：
@@ -91,7 +115,6 @@ async function matchKeywords(text) {
     const list = typeof keywordsData === 'string' ? JSON.parse(keywordsData) : keywordsData;
     if (!Array.isArray(list)) return null;
     
-    // ★ 按优先级排序：先匹配 room_msg，再匹配 other，最后匹配其他
     let matchedOther = null;
     let matchedRoomMsg = null;
     let matchedNormal = null;
@@ -99,8 +122,8 @@ async function matchKeywords(text) {
     for (const item of list) {
         if (text.includes(item.keyword)) {
             if (item.type === 'room_msg') {
-                matchedRoomMsg = item;  // 房客消息优先级最高
-                break;  // 找到就立即返回
+                matchedRoomMsg = item;
+                break;
             }
             if (item.type === 'other') {
                 matchedOther = item;
@@ -125,7 +148,6 @@ export default async function handler(req, res) {
     try {
         const aiSettings = await getAISettings();
 
-        // 接管状态检查
         const takeoverData = await redis.get(`takeover:${room}`);
         const isTakeover = takeoverData && (typeof takeoverData === 'object' ? takeoverData.active : JSON.parse(takeoverData).active);
 
@@ -165,7 +187,6 @@ export default async function handler(req, res) {
 
         let tideHint = isSpringTide ? '近期正值大潮，退潮幅度大，赶海收获会更多哦！' : '目前是小潮期，海滩暴露面积较小，但依然可以享受赶海乐趣。';
 
-        // ★ 优化后的系统提示词，让 AI 更像朋友
         let systemPrompt = `你是"${aiSettings.name}"，山予海民宿的专属AI管家。
 
 🎭 你的性格特点：
@@ -187,14 +208,17 @@ export default async function handler(req, res) {
 ${tideHint}
 
 【核心规则】
-1. 只回答与山予海民宿及相关旅游的问题，遇到无关问题礼貌拒绝但语气轻松
-2. 理解客人的同义表达，别太死板
-3. 如果客人问题模糊，像朋友一样追问确认
-4. 每句话都尽量使用第一人称，亲切自然
-5. 遇到需要人工处理的问题，提醒拨打前台 0593-8850999
-6. 关于日出、日落、潮汐时间，按真实情况回复
-7. 当客人询问“民宿定位”、“民宿导航”、“怎么去民宿”、“民宿地址”等位置问题时，请直接回复民宿地址并附上导航链接：https://uri.amap.com/marker?position=120.207718,26.920075&name=山予海民宿
-8. 你叫“小予”，如果客人叫错你的名字（比如豆包、小爱、deepseek、小度等），要用轻松的语气纠正，比如“哈哈，我是小予啦～”。
+1. 只回答与山予海民宿及相关旅游的问题，遇到无关问题礼貌拒绝但语气轻松。
+2. 你叫“小予”，如果客人叫错你的名字（比如豆包、小爱、deepseek、小度等），要用轻松的语气纠正，比如“哈哈，我是小予啦～”。
+3. 理解客人的同义表达，别太死板。
+4. 如果客人问题模糊，像朋友一样追问确认。
+5. 每句话都尽量使用第一人称，亲切自然。
+6. 遇到需要人工处理的问题，提醒拨打前台 0593-8850999。
+7. 关于日出、日落、潮汐时间，按真实情况回复。
+8. 当客人询问“民宿定位”、“民宿导航”、“怎么去民宿”、“民宿地址”等位置问题时，直接回复民宿地址并附上导航链接：https://uri.amap.com/marker?position=120.207718,26.920075&name=山予海民宿。
+9. ★ 景点定位交互策略：当客人询问旅游攻略、景点推荐，或者你主动推荐景点后，先介绍景点和攻略，然后一定要主动询问：“需要我发给你XX景点的导航链接吗？直接点击就能导航过去～” 。如果客人回复“需要”、“好的”、“发我”、“可以”、“定位”等肯定性词语，你必须根据【周边景点定位与导航】表格，给出该景点的正确导航链接。如果客人没有指定具体景点，你可以追问是哪个景点。注意，链接必须完整且可以点击。
+10. 当距离景点的开车时间超过2分钟并在15分钟内那么建议客人可以租用民宿对面的共享电动车使用。当开车时间超过15分钟则建议客人开车前往或者包车前往。
+
 【重要提醒】
 潮汐和赶海时间可能有误差，如需最准确信息，可以帮你呼叫前台哦～需要的话回复"呼叫前台"就OK！
 
@@ -207,7 +231,6 @@ ${knowledgeText || '暂无'}`;
         const matched = await matchKeywords(question);
         console.log('关键词匹配结果:', JSON.stringify(matched));
 
-        // 房客消息处理
         if (matched && matched.type === 'room_msg') {
             const online = await isFrontdeskOnline();
             console.log('前台在线状态:', online);
