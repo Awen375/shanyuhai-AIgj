@@ -24,7 +24,11 @@ export default async function handler(req, res) {
         await redis.set('heartbeat:frontdesk', '1', { ex: 60 });
         return res.status(200).json({ success: true });
     }
-
+// 客人端查询前台在线状态（只读，不写入心跳）
+if (action === 'online_status') {
+    const exists = await redis.exists('heartbeat:frontdesk');
+    return res.status(200).json({ online: !!exists });
+}
     const password = req.method === 'GET' ? url.searchParams.get('password') : (req.body?.password || '');
 
     // 客人端查询聊天记录允许 guest 密码
