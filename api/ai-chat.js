@@ -227,7 +227,7 @@ export default async function handler(req, res) {
 
         let tideHint = isSpringTide ? '近期正值大潮，退潮幅度大，赶海收获会更多哦！' : '目前是小潮期，海滩暴露面积较小，但依然可以享受赶海乐趣。';
 
-        // 计算今日/明日日出时间
+        // ★ 计算今日/明日日出时间（已修复为北京时间）
         function getSunriseTime(date) {
             const lat = 26.89;
             const lng = 120.16;
@@ -236,8 +236,9 @@ export default async function handler(req, res) {
             const hourAngle = Math.acos(-Math.tan((lat * Math.PI) / 180) * Math.tan((declination * Math.PI) / 180));
             const solarNoon = 12 + (120 - lng) / 15;
             const sunriseHour = solarNoon - (hourAngle * 180) / Math.PI / 15;
-            const sunriseUTC = new Date(date.getFullYear(), date.getMonth(), date.getDate(), Math.floor(sunriseHour), Math.round((sunriseHour % 1) * 60));
-            return new Date(sunriseUTC.getTime() + 8 * 60 * 60 * 1000);
+            // 直接用北京时间构造，避免时区偏移
+            const sunriseBeijing = new Date(date.getFullYear(), date.getMonth(), date.getDate(), Math.floor(sunriseHour), Math.round((sunriseHour % 1) * 60), 0);
+            return sunriseBeijing;
         }
 
         const todaySunrise = getSunriseTime(beijingTime);
@@ -246,8 +247,8 @@ export default async function handler(req, res) {
         const tomorrowSunrise = getSunriseTime(tomorrowDate);
 
         const sunriseInfo = `
-【今日日出时间】${todaySunrise.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })}
-【明日日出时间】${tomorrowSunrise.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })}
+【今日日出时间】北京时间 ${todaySunrise.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })}
+【明日日出时间】北京时间 ${tomorrowSunrise.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })}
 `;
 
         // ★ 计算入住天数
