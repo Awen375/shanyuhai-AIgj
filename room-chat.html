@@ -1,82 +1,344 @@
-import { Redis } from '@upstash/redis';
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>山予海AI智能管家</title>
+    <style>
+        body { font-family: 'PingFang SC','Microsoft YaHei',sans-serif; background: #f0f4f8; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
+        .chat-container { max-width: 600px; width: 100%; background: white; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); display: flex; flex-direction: column; height: 90vh; }
+        .chat-header { padding: 20px; border-bottom: 1px solid #eee; text-align: center; }
+        .chat-header h2 { margin: 0; color: #0b4f6c; }
+        .chat-messages { flex: 1; overflow-y: auto; padding: 20px; }
+        .message { margin-bottom: 15px; display: flex; }
+        .message.user { justify-content: flex-end; }
+        .message.ai, .message.frontdesk { justify-content: flex-start; }
+        .bubble { max-width: 70%; padding: 10px 16px; border-radius: 20px; font-size: 16px; line-height: 1.4; word-break: break-word; }
+        .message.user .bubble { background: #1e90ff; color: white; }
+        .message.ai .bubble { background: #f0f4f8; color: #333; }
+        .message.frontdesk .bubble { background: #e8f4fd; color: #0b4f6c; border: 1px solid #1e90ff; }
+        .chat-input { display: flex; padding: 15px; border-top: 1px solid #eee; }
+        .chat-input input { flex: 1; padding: 12px; border-radius: 25px; border: 1px solid #ddd; font-size: 16px; }
+        .chat-input button { margin-left: 10px; padding: 12px 24px; background: #1e90ff; color: white; border: none; border-radius: 25px; cursor: pointer; font-weight: 600; }
+        .chat-input button:disabled { background: #ccc; cursor: not-allowed; }
+        .notice { text-align: center; color: #888; font-size: 14px; margin-top: 5px; }
+        .welcome-screen { display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100%; text-align: center; padding: 20px; }
+        .welcome-screen h1 { color: #0b4f6c; font-size: 32px; margin-bottom: 20px; }
+        .welcome-screen p { color: #666; margin-bottom: 30px; line-height: 1.6; }
+        .welcome-screen button { padding: 15px 40px; background: #1e90ff; color: white; border: none; border-radius: 30px; font-size: 18px; cursor: pointer; }
+        .fullscreen-msg { display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100%; text-align: center; padding: 20px; }
+        .fullscreen-msg h3 { color: #0b4f6c; }
+        .status-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-left: 5px; }
+        .support-text { text-align: center; color: #aaa; font-size: 12px; margin-top: 5px; }
+        .quick-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; padding: 0 5px; }
+        .quick-btn { padding: 8px 16px; background: #f0f4f8; border: 1px solid #ddd; border-radius: 20px; font-size: 14px; color: #333; cursor: pointer; transition: 0.2s; white-space: nowrap; }
+        .quick-btn:hover { background: #e8f4fd; border-color: #1e90ff; color: #0b4f6c; }
+        .nav-btn { display: inline-block; margin-top: 5px; padding: 8px 16px; background: #1e90ff; color: white; border-radius: 20px; text-decoration: none; font-size: 14px; }
+    </style>
+</head>
+<body>
+<div class="chat-container" id="chatContainer">
+    <div id="welcomeScreen" class="welcome-screen">
+        <img src="/logo.jpg" alt="logo" class="logo-icon" style="width: 80px; height: auto;" />
+        <h1>山予海AI管家</h1>
+        <p>尊贵的山予海房客您好<br>我是您专属的AI管家<br>点击下方按钮开始我们的对话吧！</p>
+        <button onclick="startJourney()">✨ 开始智能之旅</button>
+    </div>
 
-const redis = new Redis({
-  url: process.env.KV_REST_API_URL,
-  token: process.env.KV_REST_API_TOKEN,
-});
+    <div id="loadingMsg" class="fullscreen-msg" style="display:none;"><h3>验证中...</h3></div>
+    <div id="waitingMsg" class="fullscreen-msg" style="display:none;">
+        <h3>🕒 您的AI管家正在来的路上······</h3>
+        <p id="waitingText"></p>
+    </div>
+    <div id="expiredMsg" class="fullscreen-msg" style="display:none;">
+        <h3>👋 您的AI管家跟您说再见了</h3>
+        <p>您的AI专属管家已经准备好服务下一位旅客了。他让我转告您：很高兴跟您认识，也很高兴能陪您一起度过这场难忘的假期。下次再见，我在山予海永远等您。</p>
+    </div>
+    <div id="disabledMsg" class="fullscreen-msg" style="display:none;">
+        <h3>⛔ 您的专属AI管家已停用</h3>
+        <p id="disabledText">您的专属AI管家已被停用，请联系前台获取新的二维码！</p>
+    </div>
 
-export default async function handler(req, res) {
-    if (req.method !== 'GET') return res.status(405).json({ error: '只支持GET' });
+    <div id="chatInterface" style="display:none; flex-direction: column; height: 100%;">
+        <div class="chat-header">
+            <h2>山予海 AI 管家</h2>
+            <p id="roomInfo" style="color:#888;">
+                房间：<span id="roomNumber"></span>
+                <span class="status-dot" id="statusDot" style="background: gray;"></span>
+                <span id="statusText" style="font-size: 12px;"></span>
+            </p>
+        </div>
+        <div class="chat-messages" id="chatMessages"></div>
+        <div class="chat-input">
+            <input type="text" id="messageInput" placeholder="输入您的问题...">
+            <button id="sendBtn" onclick="sendMessage()">发送</button>
+        </div>
+        <div class="notice">需要人工帮助？请回复"叫前台"</div>
+        <div class="support-text">本程序由，山予海AI大模型团队提供技术支持</div>
+    </div>
+</div>
 
-    const url = new URL(req.url, `http://${req.headers.host}`);
-    const room = url.searchParams.get('room');
-    const token = url.searchParams.get('token');
-    const checkin = url.searchParams.get('checkin');
-    const checkout = url.searchParams.get('checkout');
-    const groupId = url.searchParams.get('groupId');
+<script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const currentRoom = urlParams.get('room');
+    const token = urlParams.get('token');
+    const checkin = urlParams.get('checkin');
+    const checkout = urlParams.get('checkout');
+    const groupId = urlParams.get('groupId') || '';
 
-    if (!room || !token) return res.status(400).json({ error: '缺少房间或令牌' });
-
-    try {
-        const roomData = await redis.get(`room:${room}`);
-        if (!roomData) return res.status(200).json({ valid: false, reason: '房间不存在' });
-        const saved = typeof roomData === 'string' ? JSON.parse(roomData) : roomData;
-        if (saved.token !== token) return res.status(200).json({ valid: false, reason: '令牌无效' });
-
-        // 检查临时二维码状态
-        if (groupId) {
-            const tempQr = await redis.get(`temp_qr:${groupId}`);
-            if (tempQr) {
-                const qrData = typeof tempQr === 'string' ? JSON.parse(tempQr) : tempQr;
-                if (qrData.status === 'disabled') {
-                    return res.status(200).json({
-                        valid: false,
-                        reason: 'disabled',
-                        message: '您的专属AI管家已被停用，请联系前台获取新的二维码！'
-                    });
-                }
-            } else {
-                return res.status(200).json({
-                    valid: false,
-                    reason: 'invalid_group',
-                    message: '二维码无效'
-                });
-            }
-        }
-
-        // 时效验证
-        if (checkin && checkout) {
-            const now = new Date();
-            const beijingNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }));
-            const formatTime = (str) => {
-                const year = str.substring(0,4);
-                const month = str.substring(4,6) - 1;
-                const day = str.substring(6,8);
-                const hour = str.substring(8,10);
-                const min = str.substring(10,12);
-                return new Date(year, month, day, hour, min);
-            };
-            const checkinTime = formatTime(checkin);
-            const checkoutTime = formatTime(checkout);
-
-            if (beijingNow < checkinTime) {
-                return res.status(200).json({
-                    valid: false,
-                    reason: 'waiting',
-                    message: `您的AI专属管家等待分配，分配时间为：${checkinTime.toLocaleString('zh-CN', { hour12: false })}`
-                });
-            }
-            if (beijingNow >= checkoutTime) {
-                return res.status(200).json({
-                    valid: false,
-                    reason: 'expired',
-                    message: '您的AI专属管家已过期，很高兴陪您一起度过这场难忘的度假。下次再见，我在山予海永远等您。'
-                });
-            }
-        }
-
-        return res.status(200).json({ valid: true });
-    } catch (err) {
-        return res.status(500).json({ error: '服务错误' });
+    if (!currentRoom || !token) {
+        document.getElementById('welcomeScreen').innerHTML = '<h3>参数错误</h3>';
     }
-}
+
+    let lastMessageTime = null;
+    let pollingTimer = null;
+    let isSending = false;
+    const messageKeys = new Set();
+    const recentSentTexts = new Map();
+    let lastAIReply = '';
+    const userMessageTimestamps = new Map();
+
+    function startJourney() {
+        document.getElementById('welcomeScreen').style.display = 'none';
+        document.getElementById('loadingMsg').style.display = 'flex';
+        verifyRoom();
+    }
+
+    async function verifyRoom() {
+        try {
+            let url = `/api/check_room?room=${currentRoom}&token=${token}`;
+            if (checkin && checkout) url += `&checkin=${checkin}&checkout=${checkout}`;
+            if (groupId) url += `&groupId=${encodeURIComponent(groupId)}`;
+            const res = await fetch(url);
+            if (!res.ok) throw new Error('服务器错误');
+            const data = await res.json();
+            if (data.valid) {
+                document.getElementById('loadingMsg').style.display = 'none';
+                document.getElementById('chatInterface').style.display = 'flex';
+                document.getElementById('roomNumber').innerText = currentRoom;
+                startChat();
+            } else {
+                document.getElementById('loadingMsg').style.display = 'none';
+                if (data.reason === 'waiting') {
+                    document.getElementById('waitingMsg').style.display = 'flex';
+                    document.getElementById('waitingText').innerText = data.message;
+                } else if (data.reason === 'expired') {
+                    document.getElementById('expiredMsg').style.display = 'flex';
+                } else if (data.reason === 'disabled' || data.reason === 'invalid_group') {
+                    document.getElementById('disabledMsg').style.display = 'flex';
+                    document.getElementById('disabledText').innerText = data.message || '您的专属AI管家已被停用，请联系前台获取新的二维码！';
+                } else {
+                    alert('验证失败：' + data.reason);
+                }
+            }
+        } catch (err) {
+            alert('网络错误，请重试');
+        }
+    }
+
+    function startChat() {
+        const input = document.getElementById('messageInput');
+        input.removeEventListener('keypress', onEnterPress);
+        input.addEventListener('keypress', onEnterPress);
+
+        if (pollingTimer) clearInterval(pollingTimer);
+
+        checkFrontdeskStatus();
+        setInterval(checkFrontdeskStatus, 15000);
+
+        initialLoad().then(() => {
+            pollingTimer = setInterval(pollNewMessages, 5000);
+        });
+    }
+
+    async function checkFrontdeskStatus() {
+        try {
+            const res = await fetch(`/api/frontdesk?action=online_status`);
+            const data = await res.json();
+            const online = data.online;
+            const dot = document.getElementById('statusDot');
+            const txt = document.getElementById('statusText');
+            if (online) {
+                dot.style.background = '#27ae60';
+                txt.innerText = '前台在线';
+            } else {
+                dot.style.background = '#e74c3c';
+                txt.innerText = '前台离线';
+            }
+        } catch (e) {
+            document.getElementById('statusDot').style.background = '#e74c3c';
+            document.getElementById('statusText').innerText = '前台离线';
+        }
+    }
+
+    function onEnterPress(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            sendMessage();
+        }
+    }
+
+    async function sendMessage(customText) {
+        if (isSending) return;
+        const input = document.getElementById('messageInput');
+        const text = customText || input.value.trim();
+        if (!text) return;
+
+        isSending = true;
+        document.getElementById('sendBtn').disabled = true;
+
+        const localTime = new Date().toISOString();
+        appendMessage('user', text, localTime);
+        recentSentTexts.set(text, Date.now());
+        userMessageTimestamps.set(text, Date.now());
+
+        if (!customText) input.value = '';
+
+        try {
+            const res = await fetch('/api/ai-chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    question: text, 
+                    room: currentRoom, 
+                    groupId,
+                    checkin: checkin,
+                    checkout: checkout
+                })
+            });
+            if (!res.ok) throw new Error('AI 服务异常');
+            const data = await res.json();
+            if (data.reply && data.reply !== lastAIReply) {
+                lastAIReply = data.reply;
+                appendMessage('ai', data.reply, new Date().toISOString());
+            }
+        } catch (err) {
+            appendMessage('ai', '抱歉，服务暂时不可用，请稍后再试。', new Date().toISOString());
+        } finally {
+            isSending = false;
+            document.getElementById('sendBtn').disabled = false;
+            const now = Date.now();
+            for (const [key, time] of recentSentTexts.entries()) {
+                if (now - time > 10000) recentSentTexts.delete(key);
+            }
+        }
+    }
+
+    function appendMessage(sender, text, time) {
+        const key = `${time}_${sender}_${text}`;
+        if (messageKeys.has(key)) return;
+        messageKeys.add(key);
+
+        // 用户消息额外去重：5秒内相同文本+相同发送者视为重复
+        if (sender === 'user') {
+            const now = Date.now();
+            const msgTime = new Date(time).getTime();
+            for (const [msgText, timestamp] of userMessageTimestamps.entries()) {
+                if (msgText === text && Math.abs(now - timestamp) < 5000) return;
+                if (now - timestamp > 8000) userMessageTimestamps.delete(msgText);
+            }
+            userMessageTimestamps.set(text, now);
+        }
+
+        const chatBox = document.getElementById('chatMessages');
+        const msgDiv = document.createElement('div');
+        msgDiv.className = `message ${sender}`;
+        
+        // URL 转可点击按钮
+        const urlRegex = /(https?:\/\/[^\s]+)/g;
+        let htmlContent = text.replace(urlRegex, (url) => {
+            return `<a href="${url}" target="_blank" class="nav-btn">📍 点击导航</a>`;
+        });
+        msgDiv.innerHTML = `<div class="bubble">${htmlContent}</div>`;
+        
+        chatBox.appendChild(msgDiv);
+        chatBox.scrollTop = chatBox.scrollHeight;
+
+        if (!lastMessageTime || new Date(time) > new Date(lastMessageTime)) {
+            lastMessageTime = time;
+        }
+    }
+
+    function addQuickButtons() {
+        const chatBox = document.getElementById('chatMessages');
+        const buttonsDiv = document.createElement('div');
+        buttonsDiv.className = 'quick-buttons';
+        const questions = ['早餐时间', 'WiFi密码', '附近景点', '退房时间', '接送服务', '呼叫前台'];
+        questions.forEach(q => {
+            const btn = document.createElement('button');
+            btn.className = 'quick-btn';
+            btn.innerText = q;
+            btn.onclick = () => sendMessage(q);
+            buttonsDiv.appendChild(btn);
+        });
+        chatBox.appendChild(buttonsDiv);
+        chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    async function initialLoad() {
+        try {
+            let url = `/api/frontdesk?password=guest&action=chat_messages&room=${encodeURIComponent(currentRoom)}`;
+            if (groupId) url += `&groupId=${encodeURIComponent(groupId)}`;
+            const res = await fetch(url);
+            if (!res.ok) throw new Error('加载失败');
+            const data = await res.json();
+            const chatBox = document.getElementById('chatMessages');
+            chatBox.innerHTML = '';
+            messageKeys.clear();
+
+            if (data.messages && data.messages.length > 0) {
+                for (const m of data.messages) {
+                    let sender = m.sender === 'guest' ? 'user' : (m.sender === 'frontdesk' ? 'frontdesk' : 'ai');
+                    appendMessage(sender, m.text, m.time);
+                }
+                lastMessageTime = data.messages[data.messages.length - 1].time;
+                lastAIReply = data.messages.filter(m => m.sender === 'ai').pop()?.text || '';
+            } else {
+                lastMessageTime = null;
+                const introText = '嗨，我是你的专属AI管家小予，24小时为你服务！想了解民宿设施、周边游玩、呼叫前台，随时找我哦～';
+                appendMessage('ai', introText, new Date().toISOString());
+                lastAIReply = introText;
+                addQuickButtons();
+            }
+        } catch (e) {
+            console.error('初始加载失败', e);
+        }
+    }
+
+    async function pollNewMessages() {
+        if (!lastMessageTime) return;
+        try {
+            let url = `/api/frontdesk?password=guest&action=chat_messages&room=${encodeURIComponent(currentRoom)}`;
+            if (groupId) url += `&groupId=${encodeURIComponent(groupId)}`;
+            url += `&since=${encodeURIComponent(lastMessageTime)}`;
+
+            const res = await fetch(url);
+            if (!res.ok) return;
+            const data = await res.json();
+            if (data.messages && data.messages.length > 0) {
+                const now = Date.now();
+                for (const m of data.messages) {
+                    if (m.sender === 'guest') {
+                        const sentTime = recentSentTexts.get(m.text);
+                        if (sentTime && (now - sentTime < 8000)) continue;
+                    }
+                    if (m.sender === 'ai' && m.text === lastAIReply) continue;
+                    
+                    let sender = m.sender === 'guest' ? 'user' : (m.sender === 'frontdesk' ? 'frontdesk' : 'ai');
+                    appendMessage(sender, m.text, m.time);
+                    if (sender === 'ai') lastAIReply = m.text;
+                }
+                const lastNew = data.messages[data.messages.length - 1];
+                if (new Date(lastNew.time) > new Date(lastMessageTime)) {
+                    lastMessageTime = lastNew.time;
+                }
+            }
+        } catch (e) {}
+    }
+
+    window.addEventListener('beforeunload', () => {
+        if (pollingTimer) clearInterval(pollingTimer);
+    });
+</script>
+</body>
+</html>
