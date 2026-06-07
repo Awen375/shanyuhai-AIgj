@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>山予海 · 前台端</title>
+    <title>山予海前台端</title>
     <link rel="icon" type="image/png" href="/favicon.png">
     <style>
         body { font-family: 'PingFang SC','Microsoft YaHei',sans-serif; background: #f0f4f8; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
@@ -61,7 +61,7 @@
 <body>
 <div class="container">
     <div id="loginPanel" class="login-box">
-        <div class="logo">🌊</div>
+        <img src="/logo.jpg" alt="logo" class="logo-icon" style="width: 80px; height: auto;" />
         <h2>山予海AI管家前台端</h2>
         <input type="password" id="frontPass" placeholder="输入密码" style="width:100%; padding:12px; margin:15px 0; border-radius:12px; border:1px solid #ddd;">
         <button id="loginBtn" onclick="login()">进入前台</button>
@@ -69,8 +69,8 @@
     </div>
 
     <div id="dashboardPanel" class="dashboard hidden">
-        <button class="btn-qr" onclick="showAllTempQRs()">📱 临时二维码</button>
-        <div class="logo">🌊</div>
+        <button class="btn-qr" onclick="showAllTempQRs()">二维码管理</button>
+        <img src="/logo.jpg" alt="logo" class="logo-icon" style="width: 80px; height: auto;" />
         <h2>山予海AI管家前台端</h2>
         <div class="card-row">
             <div class="type-card" onclick="openUsageList()"><div class="label">今日AI管家使用</div><div class="count" id="cnt_usage">0</div></div>
@@ -161,6 +161,7 @@
     // ===== 全局变量 =====
     let dashboardData = null, currentRoom = null, takeoverRooms = [], alertTimer = null, chatActive = false;
     let currentGroupId = '';
+    let frontVoiceName = '';  // 存储后台设置的语音名称
     const PASSWORD = () => localStorage.getItem('front_password') || '';
     const BASE = '/api/frontdesk';
     let quickReplies = JSON.parse(localStorage.getItem('quickReplies') || '[]');
@@ -175,10 +176,17 @@
         if (alertTimer) clearInterval(alertTimer);
     });
 
-    // 语音提醒
+    // 语音提醒（使用后台设置的语音）
     function speak(text) {
         if ('speechSynthesis' in window) {
-            const utter = new SpeechSynthesisUtterance(text); utter.lang = 'zh-CN'; utter.rate = 1.0;
+            const utter = new SpeechSynthesisUtterance(text);
+            utter.lang = 'zh-CN';
+            utter.rate = 1.0;
+            if (frontVoiceName) {
+                const voices = window.speechSynthesis.getVoices();
+                const target = voices.find(v => v.name === frontVoiceName);
+                if (target) utter.voice = target;
+            }
             speechSynthesis.speak(utter);
         }
     }
@@ -208,6 +216,14 @@
             document.getElementById('chatModal').classList.add('hidden');
             currentRoom = null; chatActive = false; stopAlert();
             dashboardData = data;
+
+            // 获取后台设置的语音
+            try {
+                const voiceRes = await fetch(`${BASE}?password=${encodeURIComponent(pass)}&action=get_voice`);
+                const voiceData = await voiceRes.json();
+                frontVoiceName = voiceData.voice || '';
+            } catch (e) {}
+
             speak('登录成功');
             updateDashboard(true);
             startAutoRefresh();
@@ -559,14 +575,13 @@
     }
 
     function saveQR(id) {
-        // 临时二维码没有固定的 id，此函数保留兼容性
+        // 保留兼容性
     }
 
     async function refreshRoomQR(id) {
-        // 临时二维码刷新实际是重新生成
+        // 保留兼容性
     }
 
-    // 心跳和自动刷新
     function startTakeoverCheck() {
         setInterval(() => {
             if (!document.getElementById('dashboardPanel').classList.contains('hidden')) {
