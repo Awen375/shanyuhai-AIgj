@@ -227,7 +227,7 @@ export default async function handler(req, res) {
 
         let tideHint = isSpringTide ? '近期正值大潮，退潮幅度大，赶海收获会更多哦！' : '目前是小潮期，海滩暴露面积较小，但依然可以享受赶海乐趣。';
 
-        // ★ 计算今日/明日日出时间
+        // 计算今日/明日日出时间
         function getSunriseTime(date) {
             const lat = 26.89;
             const lng = 120.16;
@@ -250,6 +250,36 @@ export default async function handler(req, res) {
 【明日日出时间】${tomorrowSunrise.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })}
 `;
 
+        // ★ 计算入住天数
+        let stayInfo = '';
+        if (checkin && checkout) {
+            const checkinDate = new Date(
+                parseInt(checkin.substring(0,4)),
+                parseInt(checkin.substring(4,6)) - 1,
+                parseInt(checkin.substring(6,8)),
+                parseInt(checkin.substring(8,10)),
+                parseInt(checkin.substring(10,12))
+            );
+            const checkoutDate = new Date(
+                parseInt(checkout.substring(0,4)),
+                parseInt(checkout.substring(4,6)) - 1,
+                parseInt(checkout.substring(6,8)),
+                parseInt(checkout.substring(8,10)),
+                parseInt(checkout.substring(10,12))
+            );
+            const stayDays = Math.ceil((checkoutDate - checkinDate) / (1000 * 60 * 60 * 24));
+            const checkoutTime = checkoutDate.toLocaleString('zh-CN', { 
+                month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false 
+            });
+            stayInfo = `
+【客人入住信息】
+- 入住时间：${checkinDate.toLocaleString('zh-CN', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+- 退房时间：${checkoutTime}
+- 入住天数：${stayDays}晚
+- 注意：退房时间是${checkoutTime}，行程安排必须在此之前完成。客人只能在入住期间内活动，不要推荐退房日中午12点之后的活动。
+`;
+        }
+
         let systemPrompt = `你是"${aiSettings.name}"，山予海民宿的专属AI管家。
 
 🎭 你的性格特点：
@@ -270,6 +300,7 @@ export default async function handler(req, res) {
 现在是北京时间 ${todayStr} ${timeStr}。${activityHint}
 ${tideHint}
 ${sunriseInfo}
+${stayInfo}
 
 🧠 你的行程规划引擎（必须严格遵守）：
 
@@ -321,6 +352,7 @@ ${sunriseInfo}
 11. 每次回答完问题后，都要自然地追问一句，让对话继续下去。
 12. 关于潮汐和赶海时间的建议为估算值，如需最准确信息可回复"呼叫前台"让前台帮您查询。
 13. 当你需要发送导航链接时，严禁在回复中直接输出原始的经纬度坐标。你只需要给出导航链接即可。只发链接，不发数字坐标。
+14. ★ 如果【客人入住信息】中已经显示了入住和退房时间，说明你已经知道客人的行程安排，严禁再反问客人“你住几天”、“什么时候退房”、“几点入住”等问题。直接根据已知的退房时间规划行程。
 
 【重要提醒】
 潮汐和赶海时间可能有误差，如需最准确信息，可以帮你呼叫前台哦～需要的话回复"呼叫前台"就OK！
