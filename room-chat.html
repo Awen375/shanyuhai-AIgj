@@ -30,6 +30,11 @@
         .fullscreen-msg h3 { color: #0b4f6c; }
         .status-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-left: 5px; }
         .support-text { text-align: center; color: #aaa; font-size: 12px; margin-top: 5px; }
+        
+        /* 快捷按钮样式 */
+        .quick-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; padding: 0 5px; }
+        .quick-btn { padding: 8px 16px; background: #f0f4f8; border: 1px solid #ddd; border-radius: 20px; font-size: 14px; color: #333; cursor: pointer; transition: 0.2s; white-space: nowrap; }
+        .quick-btn:hover { background: #e8f4fd; border-color: #1e90ff; color: #0b4f6c; }
     </style>
 </head>
 <body>
@@ -47,8 +52,8 @@
         <p id="waitingText"></p>
     </div>
     <div id="expiredMsg" class="fullscreen-msg" style="display:none;">
-        <h3>👋 管家已过期</h3>
-        <p>您的AI专属管家已过期，很高兴陪您一起度过这场难忘的度假。下次再见，我在山予海永远等您。</p>
+        <h3>👋 您的AI管家已过期</h3>
+        <p>您的AI专属管家已经准备好服务下一位旅客了，他让我转告您：很高兴能陪您一起度过这场难忘的假期。下次再见，我在山予海永远等您。</p>
     </div>
     <div id="disabledMsg" class="fullscreen-msg" style="display:none;">
         <h3>⛔ 您的专属AI管家已停用</h3>
@@ -137,7 +142,6 @@
 
         if (pollingTimer) clearInterval(pollingTimer);
 
-        // 定期检查前台在线状态
         checkFrontdeskStatus();
         setInterval(checkFrontdeskStatus, 15000);
 
@@ -146,26 +150,25 @@
         });
     }
 
-    // 检查前台在线状态并更新指示灯
     async function checkFrontdeskStatus() {
-    try {
-        const res = await fetch(`/api/frontdesk?action=online_status`);
-        const data = await res.json();
-        const online = data.online;
-        const dot = document.getElementById('statusDot');
-        const txt = document.getElementById('statusText');
-        if (online) {
-            dot.style.background = '#27ae60'; // 绿色
-            txt.innerText = '前台在线';
-        } else {
-            dot.style.background = '#e74c3c'; // 红色
-            txt.innerText = '前台离线';
+        try {
+            const res = await fetch(`/api/frontdesk?action=online_status`);
+            const data = await res.json();
+            const online = data.online;
+            const dot = document.getElementById('statusDot');
+            const txt = document.getElementById('statusText');
+            if (online) {
+                dot.style.background = '#27ae60';
+                txt.innerText = '前台在线';
+            } else {
+                dot.style.background = '#e74c3c';
+                txt.innerText = '前台离线';
+            }
+        } catch (e) {
+            document.getElementById('statusDot').style.background = '#e74c3c';
+            document.getElementById('statusText').innerText = '前台离线';
         }
-    } catch (e) {
-        document.getElementById('statusDot').style.background = '#e74c3c';
-        document.getElementById('statusText').innerText = '前台离线';
     }
-}
 
     function onEnterPress(e) {
         if (e.key === 'Enter') {
@@ -174,10 +177,11 @@
         }
     }
 
-    async function sendMessage() {
+    // 修改后的发送函数，可以接受可选文本参数
+    async function sendMessage(customText) {
         if (isSending) return;
         const input = document.getElementById('messageInput');
-        const text = input.value.trim();
+        const text = customText || input.value.trim();
         if (!text) return;
 
         isSending = true;
@@ -186,7 +190,8 @@
         const localTime = new Date().toISOString();
         appendMessage('user', text, localTime);
         recentSentTexts.set(text, Date.now());
-        input.value = '';
+        
+        if (!customText) input.value = ''; // 快捷按钮触发时不清空输入框
 
         try {
             const res = await fetch('/api/ai-chat', {
@@ -228,6 +233,23 @@
         }
     }
 
+    // 添加快捷按钮区域
+    function addQuickButtons() {
+        const chatBox = document.getElementById('chatMessages');
+        const buttonsDiv = document.createElement('div');
+        buttonsDiv.className = 'quick-buttons';
+        const questions = ['早餐时间', 'WiFi密码', '附近景点', '退房时间', '接送服务'];
+        questions.forEach(q => {
+            const btn = document.createElement('button');
+            btn.className = 'quick-btn';
+            btn.innerText = q;
+            btn.onclick = () => sendMessage(q);
+            buttonsDiv.appendChild(btn);
+        });
+        chatBox.appendChild(buttonsDiv);
+        chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
     async function initialLoad() {
         try {
             let url = `/api/frontdesk?password=guest&action=chat_messages&room=${encodeURIComponent(currentRoom)}`;
@@ -247,9 +269,11 @@
                 lastMessageTime = data.messages[data.messages.length - 1].time;
             } else {
                 lastMessageTime = null;
-                // 首次进入且无历史记录，AI自动发送自我介绍
+                // 首次进入，AI自动发送自我介绍
                 const introText = '嗨，我是你的专属AI管家小予，24小时为你服务！想了解民宿设施、周边游玩、呼叫前台，随时找我哦～';
                 appendMessage('ai', introText, new Date().toISOString());
+                // 添加快捷按钮
+                addQuickButtons();
             }
         } catch (e) {
             console.error('初始加载失败', e);
