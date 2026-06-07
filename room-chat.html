@@ -33,6 +33,7 @@
         .quick-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; padding: 0 5px; }
         .quick-btn { padding: 8px 16px; background: #f0f4f8; border: 1px solid #ddd; border-radius: 20px; font-size: 14px; color: #333; cursor: pointer; transition: 0.2s; white-space: nowrap; }
         .quick-btn:hover { background: #e8f4fd; border-color: #1e90ff; color: #0b4f6c; }
+        .nav-btn { display: inline-block; margin-top: 5px; padding: 8px 16px; background: #1e90ff; color: white; border-radius: 20px; text-decoration: none; font-size: 14px; }
     </style>
 </head>
 <body>
@@ -94,7 +95,7 @@
     let isSending = false;
     const messageKeys = new Set();
     const recentSentTexts = new Map();
-    let lastAIReply = '';  // 记录最后一条AI回复，防止重复
+    let lastAIReply = '';
 
     function startJourney() {
         document.getElementById('welcomeScreen').style.display = 'none';
@@ -215,6 +216,7 @@
         }
     }
 
+    // ★ 关键修改：将链接渲染为导航按钮
     function appendMessage(sender, text, time) {
         const key = `${time}_${sender}_${text}`;
         if (messageKeys.has(key)) return;
@@ -223,7 +225,14 @@
         const chatBox = document.getElementById('chatMessages');
         const msgDiv = document.createElement('div');
         msgDiv.className = `message ${sender}`;
-        msgDiv.innerHTML = `<div class="bubble">${text}</div>`;
+        
+        // 匹配 http/https 链接并替换为按钮
+        const urlRegex = /(https?:\/\/[^\s]+)/g;
+        let htmlContent = text.replace(urlRegex, (url) => {
+            return `<a href="${url}" target="_blank" class="nav-btn">📍 点击导航</a>`;
+        });
+        
+        msgDiv.innerHTML = `<div class="bubble">${htmlContent}</div>`;
         chatBox.appendChild(msgDiv);
         chatBox.scrollTop = chatBox.scrollHeight;
 
@@ -295,7 +304,6 @@
                         const sentTime = recentSentTexts.get(m.text);
                         if (sentTime && (now - sentTime < 8000)) continue;
                     }
-                    // 防止AI重复回复
                     if (m.sender === 'ai' && m.text === lastAIReply) continue;
                     
                     let sender = m.sender === 'guest' ? 'user' : (m.sender === 'frontdesk' ? 'frontdesk' : 'ai');
