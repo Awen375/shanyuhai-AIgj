@@ -435,7 +435,7 @@ ${knowledgeText || '暂无'}`;
                 'Authorization': `Bearer ${process.env.VOLCENGINE_API_KEY}`
             },
             body: JSON.stringify({
-                model: 'ep-m-20260521173515-xfdzp',
+                model: 'ep-20260606133152-72n4l',
                 messages: [
                     { role: 'system', content: systemPrompt },
                     { role: 'user', content: question }
