@@ -148,24 +148,24 @@
 
     // 检查前台在线状态并更新指示灯
     async function checkFrontdeskStatus() {
-        try {
-            const res = await fetch(`/api/frontdesk?action=heartbeat&password=guest`);
-            const online = res.ok;
-            const dot = document.getElementById('statusDot');
-            const txt = document.getElementById('statusText');
-            if (online) {
-                dot.style.background = '#27ae60'; // 绿色
-                txt.innerText = '前台在线';
-            } else {
-                dot.style.background = '#e74c3c'; // 红色
-                txt.innerText = '前台离线';
-            }
-        } catch (e) {
-            // 请求失败视为离线
-            document.getElementById('statusDot').style.background = '#e74c3c';
-            document.getElementById('statusText').innerText = '前台离线';
+    try {
+        const res = await fetch(`/api/frontdesk?action=online_status`);
+        const data = await res.json();
+        const online = data.online;
+        const dot = document.getElementById('statusDot');
+        const txt = document.getElementById('statusText');
+        if (online) {
+            dot.style.background = '#27ae60'; // 绿色
+            txt.innerText = '前台在线';
+        } else {
+            dot.style.background = '#e74c3c'; // 红色
+            txt.innerText = '前台离线';
         }
+    } catch (e) {
+        document.getElementById('statusDot').style.background = '#e74c3c';
+        document.getElementById('statusText').innerText = '前台离线';
     }
+}
 
     function onEnterPress(e) {
         if (e.key === 'Enter') {
