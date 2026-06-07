@@ -187,6 +187,29 @@ export default async function handler(req, res) {
 
         let tideHint = isSpringTide ? '近期正值大潮，退潮幅度大，赶海收获会更多哦！' : '目前是小潮期，海滩暴露面积较小，但依然可以享受赶海乐趣。';
 
+        // ★ 计算今日/明日日出时间
+        function getSunriseTime(date) {
+            const lat = 26.89;
+            const lng = 120.16;
+            const dayOfYear = Math.floor((date - new Date(date.getFullYear(), 0, 0)) / (1000 * 60 * 60 * 24));
+            const declination = 23.45 * Math.sin((2 * Math.PI / 365) * (dayOfYear - 81));
+            const hourAngle = Math.acos(-Math.tan((lat * Math.PI) / 180) * Math.tan((declination * Math.PI) / 180));
+            const solarNoon = 12 + (120 - lng) / 15;
+            const sunriseHour = solarNoon - (hourAngle * 180) / Math.PI / 15;
+            const sunriseUTC = new Date(date.getFullYear(), date.getMonth(), date.getDate(), Math.floor(sunriseHour), Math.round((sunriseHour % 1) * 60));
+            return new Date(sunriseUTC.getTime() + 8 * 60 * 60 * 1000);
+        }
+
+        const todaySunrise = getSunriseTime(beijingTime);
+        const tomorrowDate = new Date(beijingTime);
+        tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+        const tomorrowSunrise = getSunriseTime(tomorrowDate);
+
+        const sunriseInfo = `
+【今日日出时间】${todaySunrise.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })}
+【明日日出时间】${tomorrowSunrise.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })}
+`;
+
         let systemPrompt = `你是"${aiSettings.name}"，山予海民宿的专属AI管家。
 
 🎭 你的性格特点：
@@ -206,6 +229,7 @@ export default async function handler(req, res) {
 📋 当前信息：
 现在是北京时间 ${todayStr} ${timeStr}。${activityHint}
 ${tideHint}
+${sunriseInfo}
 
 【核心规则】
 1. 只回答与山予海民宿及相关旅游的问题，遇到无关问题礼貌拒绝但语气轻松。
@@ -214,7 +238,7 @@ ${tideHint}
 4. 如果客人问题模糊，像朋友一样追问确认。
 5. 每句话都尽量使用第一人称，亲切自然。
 6. 遇到需要人工处理的问题，提醒拨打前台 0593-8850999。
-7. 关于日出、日落、潮汐时间，按真实情况回复。
+7. ★ 当客人询问日出时间时，请直接告知当天的日出时间（根据上面的日出信息），并提醒客人提前30分钟出发前往花竹1号观景台观看日出。最后询问是否需要发送民宿定位或花竹观景台导航链接。
 8. 当客人询问“民宿定位”、“民宿导航”、“怎么去民宿”、“民宿地址”等位置问题时，直接回复民宿地址并附上导航链接：https://uri.amap.com/marker?position=120.207718,26.920075&name=山予海民宿。
 9. ★ 景点定位交互策略：当客人询问旅游攻略、景点推荐，或者你主动推荐景点后，先介绍景点和攻略，然后一定要主动询问：“需要我发给你XX景点的导航链接吗？直接点击就能导航过去～” 。如果客人回复“需要”、“好的”、“发我”、“可以”、“定位”等肯定性词语，你必须根据【周边景点定位与导航】表格，给出该景点的正确导航链接。如果客人没有指定具体景点，你可以追问是哪个景点。注意，链接必须完整且可以点击。
 10. 当距离景点的开车时间超过2分钟并在15分钟内那么建议客人可以租用民宿对面的共享电动车使用。当开车时间超过15分钟则建议客人开车前往或者包车前往。
