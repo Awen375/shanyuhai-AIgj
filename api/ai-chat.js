@@ -7,27 +7,59 @@ const redis = new Redis({
 
 const hotelInfo = `
 【民宿定位与导航】
-- 民宿坐标（高德/百度）：120.207718,26.920075
-- 导航链接：https://uri.amap.com/marker?position=120.207718,26.920075&name=山予海民宿
-- 点击链接即可直接启动地图导航，方便您快速到达～
+- 高德导航：https://uri.amap.com/marker?position=120.207718,26.920075&name=山予海民宿
+- 百度导航：https://api.map.baidu.com/marker?location=120.214190,26.926040&title=山予海民宿&content=霞浦县三沙镇奇沙17号&output=html
+（请将上面百度链接的坐标替换为你从百度地图实际获取的坐标）
 
 【周边景点定位与导航】
-- 三沙镇吃饭一条街：坐标 120.2183166584168,26.920891508999237，导航链接 https://uri.amap.com/marker?position=120.2183166584168,26.920891508999237&name=三沙镇美食街
-- 东壁村日落观景台：坐标 120.19182005293995,26.919324893525214，导航链接 https://uri.amap.com/marker?position=120.19182005293995,26.919324893525214&name=东壁村日落观景台
-- 花竹一号日出打卡点：坐标 120.23444411892245,26.941406283787998，导航链接 https://uri.amap.com/marker?position=120.23444411892245,26.941406283787998&name=花竹日出观景台
-- 小皓赶海沙滩：坐标 120.14894053534572,26.92743848598469，导航链接 https://uri.amap.com/marker?position=120.14894053534572,26.92743848598469&name=小皓赶海沙滩
-- 高罗沙滩：坐标 120.09907717270104,26.75110481058203，导航链接 https://uri.amap.com/marker?position=120.09907717270104,26.75110481058203&name=高罗沙滩
-- 大京沙滩：坐标 120.10950696017353,26.69654763131801，导航链接 https://uri.amap.com/marker?position=120.10950696017353,26.69654763131801&name=大京沙滩
-- 下尾岛：坐标 120.12220101700336,26.657081457374364，导航链接 https://uri.amap.com/marker?position=120.12220101700336,26.657081457374364&name=下尾岛
-- 霞浦县城：坐标 120.02633366127935,26.882658443201795，导航链接 https://uri.amap.com/marker?position=120.02633366127935,26.882658443201795&name=霞浦县城
-- 霞浦动车站：坐标 120.03254765443904,26.90892009243058，导航链接 https://uri.amap.com/marker?position=120.03254765443904,26.90892009243058&name=霞浦动车站
-- 观影栈道：坐标 120.17350830038365,26.925858448281875，导航链接 https://uri.amap.com/marker?position=120.17350830038365,26.925858448281875&name=观影栈道
-- 太姥山：坐标 120.24214782042311,27.099462178738797，导航链接 https://uri.amap.com/marker?position=120.24214782042311,27.099462178738797&name=太姥山
-- 杨家溪：坐标 120.12477387581832,27.02425633154216，导航链接 https://uri.amap.com/marker?position=120.12477387581832,27.02425633154216&name=杨家溪
-- 虞公亭沙滩日落：坐标 120.1852065074927,26.923888448736097，导航链接 https://uri.amap.com/marker?position=120.1852065074927,26.923888448736097&name=虞公亭沙滩日落
-- 闾峡灯塔：坐标 120.13596952285687,26.644914578867578，导航链接 https://uri.amap.com/marker?position=120.13596952285687,26.644914578867578&name=闾峡灯塔
-- 丹湾观景台：坐标 120.10977234113243,26.68525567486343，导航链接 https://uri.amap.com/marker?position=120.10977234113243,26.68525567486343&name=丹湾观景台
-- 嵛山岛登船码头：坐标 120.24475829561719,26.935613143519664，导航链接 https://uri.amap.com/marker?position=120.24475829561719,26.935613143519664&name=嵛山岛登船码头
+- 三沙镇吃饭一条街：
+  高德 https://uri.amap.com/marker?position=120.2183166584168,26.920891508999237&name=三沙镇美食街
+  百度 https://api.map.baidu.com/marker?location=120.224837,26.927057&title=三沙镇美食街&output=html
+- 东壁村日落观景台：
+  高德 https://uri.amap.com/marker?position=120.19182005293995,26.919324893525214&name=东壁村日落观景台
+  百度 https://api.map.baidu.com/marker?location=120.198407,26.925055&title=东壁村日落观景台&output=html
+- 花竹一号日出打卡点：
+  高德 https://uri.amap.com/marker?position=120.23444411892245,26.941406283787998&name=花竹日出观景台
+  百度 https://api.map.baidu.com/marker?location=120.240865,26.947751&title=花竹日出观景台&output=html
+- 小皓赶海沙滩：
+  高德 https://uri.amap.com/marker?position=120.14894053534572,26.92743848598469&name=小皓赶海沙滩
+  百度 https://api.map.baidu.com/marker?location=120.157815,26.935029&title=小皓赶海沙滩&output=html
+- 高罗沙滩：
+  高德 https://uri.amap.com/marker?position=120.09907717270104,26.75110481058203&name=高罗沙滩
+  百度 https://api.map.baidu.com/marker?location=120.105532,26.757267&title=高罗沙滩&output=html
+- 大京沙滩：
+  高德 https://uri.amap.com/marker?position=120.10950696017353,26.69654763131801&name=大京沙滩
+  百度 https://api.map.baidu.com/marker?location=120.115942,26.702855&title=大京沙滩&output=html
+- 下尾岛：
+  高德 https://uri.amap.com/marker?position=120.12220101700336,26.657081457374364&name=下尾岛
+  百度 https://api.map.baidu.com/marker?location=120.128637,26.663443&title=下尾岛&output=html
+- 霞浦县城：
+  高德 https://uri.amap.com/marker?position=120.02633366127935,26.882658443201795&name=霞浦县城
+  百度 https://api.map.baidu.com/marker?location=120.032826,26.888742&title=霞浦县城&output=html
+- 霞浦动车站：
+  高德 https://uri.amap.com/marker?position=120.03254765443904,26.90892009243058&name=霞浦动车站
+  百度 https://api.map.baidu.com/marker?location=120.039078,26.914876&title=霞浦动车站&output=html
+- 观影栈道：
+  高德 https://uri.amap.com/marker?position=120.17350830038365,26.925858448281875&name=观影栈道
+  百度 https://api.map.baidu.com/marker?location=120.180098,26.931521&title=观影栈道&output=html
+- 太姥山：
+  高德 https://uri.amap.com/marker?position=120.24214782042311,27.099462178738797&name=太姥山
+  百度 https://api.map.baidu.com/marker?location=120.248697,27.105761&title=太姥山&output=html
+- 杨家溪：
+  高德 https://uri.amap.com/marker?position=120.12477387581832,27.02425633154216&name=杨家溪
+  百度 https://api.map.baidu.com/marker?location=120.131214,27.030610&title=杨家溪&output=html
+- 虞公亭沙滩日落：
+  高德 https://uri.amap.com/marker?position=120.1852065074927,26.923888448736097&name=虞公亭沙滩日落
+  百度 https://api.map.baidu.com/marker?location=120.191799,26.929545&title=虞公亭沙滩日落&output=html
+- 闾峡灯塔：
+  高德 https://uri.amap.com/marker?position=120.13596952285687,26.644914578867578&name=闾峡灯塔
+  百度 https://api.map.baidu.com/marker?location=120.142421,26.651158&title=闾峡灯塔&output=html
+- 丹湾观景台：
+  高德 https://uri.amap.com/marker?position=120.10977234113243,26.68525567486343&name=丹湾观景台
+  百度 https://api.map.baidu.com/marker?location=120.116217,26.691568&title=丹湾观景台&output=html
+- 嵛山岛登船码头：
+  高德 https://uri.amap.com/marker?position=120.24475829561719,26.935613143519664&name=嵛山岛登船码头
+  百度 https://api.map.baidu.com/marker?location=120.251184,26.941964&title=嵛山岛登船码头&output=html
 
 【民宿基本信息】
 - 民宿名称：霞浦县山予海民宿
@@ -233,16 +265,16 @@ ${sunriseInfo}
 
 【核心规则】
 1. 只回答与山予海民宿及相关旅游的问题，遇到无关问题礼貌拒绝但语气轻松。
-2. 你叫“小予”，如果客人叫错你的名字（比如豆包、小爱、deepseek、小度等），要用轻松的语气纠正，比如“哈哈，我是小予啦～”。
+2. 你叫“小予”，如果客人叫错你的名字，要用轻松的语气纠正。
 3. 理解客人的同义表达，别太死板。
 4. 如果客人问题模糊，像朋友一样追问确认。
 5. 每句话都尽量使用第一人称，亲切自然。
 6. 遇到需要人工处理的问题，提醒拨打前台 0593-8850999。
 7. ★ 当客人询问日出时间时，请直接告知当天的日出时间（根据上面的日出信息），并提醒客人提前30分钟出发前往花竹1号观景台观看日出。最后询问是否需要发送民宿定位或花竹观景台导航链接。
-8. 当客人询问“民宿定位”、“民宿导航”、“怎么去民宿”、“民宿地址”等位置问题时，直接回复民宿地址并附上导航链接：https://uri.amap.com/marker?position=120.207718,26.920075&name=山予海民宿。
-9. ★ 景点定位交互策略：当客人询问旅游攻略、景点推荐，或者你主动推荐景点后，先介绍景点和攻略，然后一定要主动询问：“需要我发给你XX景点的导航链接吗？直接点击就能导航过去～” 。如果客人回复“需要”、“好的”、“发我”、“可以”、“定位”等肯定性词语，你必须根据【周边景点定位与导航】表格，给出该景点的正确导航链接。如果客人没有指定具体景点，你可以追问是哪个景点。注意，链接必须完整且可以点击。
+8. ★ 当客人询问“民宿定位”、“民宿导航”、“怎么去民宿”、“民宿地址”等位置问题时，请同时回复民宿的高德导航链接和百度导航链接，并告诉客人可以根据自己手机安装的地图选择点击。两个链接都在【民宿定位与导航】中。
+9. ★ 景点定位交互策略：当客人询问旅游攻略、景点推荐，或者你主动推荐景点后，先介绍景点和攻略，然后一定要主动询问：“需要我发给你XX景点的导航链接吗？”如果客人回复肯定，你必须同时给出该景点的高德导航链接和百度导航链接（两个都发，让客人选择），链接从【周边景点定位与导航】表格中获取。
 10. 当距离景点的开车时间超过2分钟并在15分钟内那么建议客人可以租用民宿对面的共享电动车使用。当开车时间超过15分钟则建议客人开车前往或者包车前往。
-11. 每次回答完问题后，都要自然地追问一句，比如“还有其他想了解的吗？”、“需要我帮你准备什么吗？”等，让对话继续下去。
+11. 每次回答完问题后，都要自然地追问一句，让对话继续下去。
 
 【重要提醒】
 潮汐和赶海时间可能有误差，如需最准确信息，可以帮你呼叫前台哦～需要的话回复"呼叫前台"就OK！
@@ -253,12 +285,12 @@ ${hotelInfo}
 【补充知识库】
 ${knowledgeText || '暂无'}`;
 
-        // ★ 退房关怀：若当天是退房日且当前时间 >= 7:00，则提醒 AI 插入退房问候
+        // 退房关怀
         if (checkout) {
             const checkoutDate = checkout.substring(0, 8);
             const todayBeijing = beijingTime.toISOString().slice(0, 10).replace(/-/g, '');
             if (todayBeijing === checkoutDate && hour >= 7) {
-                systemPrompt += `\n\n【退房关怀】今天是客人的退房日，请在回答完主要问题后，自然地加上退房相关提醒，比如：“对了，今天是您退房的日子哦～退房时间是中午12:00前，如果需要延迟退房可以告诉我。行李也可以先寄存在前台，退房后还能再玩半天！”语气要轻松，不要生硬。`;
+                systemPrompt += `\n\n【退房关怀】今天是客人的退房日，请在回答完主要问题后，自然地加上退房相关提醒，语气轻松。`;
             }
         }
 
