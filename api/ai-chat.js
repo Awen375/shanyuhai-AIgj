@@ -6,7 +6,6 @@ const hotelInfo = `
 【民宿定位与导航】
 - 高德导航：https://uri.amap.com/marker?position=120.207718,26.920075&name=山予海民宿
 - 百度导航：https://api.map.baidu.com/marker?location=120.214190,26.926040&title=山予海民宿&content=霞浦县三沙镇奇沙17号&output=html
-（请将上面百度链接的坐标替换为你从百度地图实际获取的坐标）
 
 【周边景点定位与导航】
 - 三沙镇吃饭一条街：
@@ -224,7 +223,7 @@ export default async function handler(req, res) {
 
         let tideHint = isSpringTide ? '近期正值大潮，退潮幅度大，赶海收获会更多哦！' : '目前是小潮期，海滩暴露面积较小，但依然可以享受赶海乐趣。';
 
-        // ★ 计算今日/明日日出时间（已修复为北京时间）
+        // ★ 计算今日/明日日出时间
         function getSunriseTime(date) {
             const lat = 26.89;
             const lng = 120.16;
@@ -233,7 +232,6 @@ export default async function handler(req, res) {
             const hourAngle = Math.acos(-Math.tan((lat * Math.PI) / 180) * Math.tan((declination * Math.PI) / 180));
             const solarNoon = 12 + (120 - lng) / 15;
             const sunriseHour = solarNoon - (hourAngle * 180) / Math.PI / 15;
-            // 直接用北京时间构造，避免时区偏移
             const sunriseBeijing = new Date(date.getFullYear(), date.getMonth(), date.getDate(), Math.floor(sunriseHour), Math.round((sunriseHour % 1) * 60), 0);
             return sunriseBeijing;
         }
@@ -466,8 +464,7 @@ ${knowledgeText || '暂无'}`;
             question,
             reply,
             time: new Date().toISOString()
-        }));
-        await redis.expire(chatKey, 60 * 60 * 24 * 90);
+        }), 'EX', 60 * 60 * 24 * 90);
 
         if (matched && matched.type !== 'other' && matched.type !== 'room_msg') {
             await redis.set(`notification:${Date.now()}`, JSON.stringify({
