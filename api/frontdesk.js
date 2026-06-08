@@ -18,8 +18,9 @@ export default async function handler(req, res) {
 
     // 心跳不需密码
     if (action === 'heartbeat') {
-        await redis.set('heartbeat:frontdesk', '1', { ex: 60 });
-        return res.status(200).json({ success: true });
+    await redis.set('heartbeat:frontdesk', '1', 'EX', 60);
+    return res.status(200).json({ success: true });
+}
     }
 
     // 客人端查询前台在线状态（只读）
