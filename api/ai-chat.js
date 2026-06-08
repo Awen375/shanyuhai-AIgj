@@ -145,41 +145,40 @@ async function getAISettings() {
     };
 }
 
+// ★ 修改后的关键词匹配：强制将 urgent 视为 room_msg，并删除紧急通知相关逻辑
 async function matchKeywords(text) {
     const keywordsData = await redis.get('config:keywords');
     if (!keywordsData) return null;
     const list = typeof keywordsData === 'string' ? JSON.parse(keywordsData) : keywordsData;
     if (!Array.isArray(list)) return null;
-    
-    let matchedOther = null;
+
     let matchedRoomMsg = null;
-    let matchedNormal = null;
-    
+    let matchedOther = null;
+
     for (const item of list) {
         if (text.includes(item.keyword)) {
+            // 如果旧数据中还有 urgent 类型，强制转为 room_msg
+            if (item.type === 'urgent') {
+                item.type = 'room_msg';
+                console.log('检测到旧版 urgent 关键词，已自动转为 room_msg');
+            }
+
             if (item.type === 'room_msg') {
                 matchedRoomMsg = item;
-                break;
-            }
-            if (item.type === 'other') {
+                break; // 最高优先级，找到即停止
+            } else if (item.type === 'other') {
                 matchedOther = item;
-                continue;
+                // 继续查找，因为 room_msg 可能还未出现
             }
-            if (!matchedNormal) matchedNormal = item;
         }
     }
-    return matchedRoomMsg || matchedNormal || matchedOther;
+
+    return matchedRoomMsg || matchedOther || null;
 }
 
 async function isFrontdeskOnline() {
-    try {
-        const heartbeat = await redis.get('heartbeat:frontdesk');
-        console.log('心跳检查结果:', heartbeat);
-        return !!heartbeat;
-    } catch (err) {
-        console.error('检查前台在线状态出错:', err);
-        return false;
-    }
+    const heartbeat = await redis.get('heartbeat:frontdesk');
+    return !!heartbeat;
 }
 
 export default async function handler(req, res) {
@@ -229,7 +228,6 @@ export default async function handler(req, res) {
 
         let tideHint = isSpringTide ? '近期正值大潮，退潮幅度大，赶海收获会更多哦！' : '目前是小潮期，海滩暴露面积较小，但依然可以享受赶海乐趣。';
 
-        // 计算今日/明日日出时间
         function getSunriseTime(date) {
             const lat = 26.89;
             const lng = 120.16;
@@ -376,35 +374,44 @@ ${knowledgeText || '暂无'}`;
         const matched = await matchKeywords(question);
         console.log('关键词匹配结果:', JSON.stringify(matched));
 
+        // 接管处理
         if (matched && matched.type === 'room_msg') {
             const online = await isFrontdeskOnline();
             console.log('前台在线状态:', online);
-            console.log('当前小时:', hour, '是否上班时间:', (hour >= 8 && hour < 23));
-
             const isWorkingHour = (hour >= 8 && hour < 23);
 
-            // ★ 强制写入接管（用于调试，正式环境改为条件判断）
-            // 无论在线与否，先写入接管看看能否成功
-            try {
-                const takeoverKey = `takeover:${room}`;
-                const takeoverValue = JSON.stringify({
-                    active: true, startTime: Date.now(), lastGuestMsg: Date.now(), groupId: groupId || ''
-                });
-                console.log('准备写入接管:', takeoverKey, takeoverValue);
-                await redis.set(takeoverKey, takeoverValue);
-                console.log('接管写入成功');
-                
-                // 同时写入通知
-                await redis.set(`notification:${Date.now()}`, JSON.stringify({
-                    room: room || '未知', question, reply: '', keyword: matched.keyword,
-                    type: 'room_msg', time: new Date().toISOString(), status: 'pending', groupId: groupId || ''
-                }));
-                console.log('通知写入成功');
-                
-                return res.status(200).json({ reply: '好的您稍等，我现在就通知前台的小伙伴与您联系，您不要离开正在接通中请稍候......' });
-            } catch (writeError) {
-                console.error('接管或通知写入失败:', writeError);
-                return res.status(500).json({ error: '接管设置失败' });
+            if (isWorkingHour) {
+                if (online) {
+                    await redis.set(`notification:${Date.now()}`, JSON.stringify({
+                        room: room || '未知', question, reply: '', keyword: matched.keyword,
+                        type: 'room_msg', time: new Date().toISOString(), status: 'pending', groupId: groupId || ''
+                    }));
+                    await redis.set(`takeover:${room}`, JSON.stringify({
+                        active: true, startTime: Date.now(), lastGuestMsg: Date.now(), groupId: groupId || ''
+                    }));
+                    console.log(`接管房间已设置: takeover:${room}，群组：${groupId || '无'}`);
+                    return res.status(200).json({ reply: '好的您稍等，我现在就通知前台的小伙伴与您联系，您不要离开正在接通中请稍候......' });
+                } else {
+                    return res.status(200).json({
+                        reply: '接通失败~当前前台的小伙伴不在线，您可以稍后再试，或者拨打前台电话联系前台。前台电话为：0593-8850999'
+                    });
+                }
+            } else {
+                if (online) {
+                    await redis.set(`notification:${Date.now()}`, JSON.stringify({
+                        room: room || '未知', question, reply: '', keyword: matched.keyword,
+                        type: 'room_msg', time: new Date().toISOString(), status: 'pending', groupId: groupId || ''
+                    }));
+                    await redis.set(`takeover:${room}`, JSON.stringify({
+                        active: true, startTime: Date.now(), lastGuestMsg: Date.now(), groupId: groupId || ''
+                    }));
+                    console.log(`接管房间已设置（下班时间前台在线）: takeover:${room}，群组：${groupId || '无'}`);
+                    return res.status(200).json({ reply: '好的您稍等，我现在就通知前台的小伙伴与您联系，您不要离开正在接通中请稍候......' });
+                } else {
+                    return res.status(200).json({
+                        reply: '我们前台的小伙伴们都下班啦！目前是下班时间，有什么问题您可以先问我我可以帮您处理的。上班时间：8:00-23:00'
+                    });
+                }
             }
         }
 
