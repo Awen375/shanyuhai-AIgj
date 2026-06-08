@@ -7,6 +7,18 @@ async function checkPassword(password) {
     return password === saved;
 }
 
+// 通用 SCAN 辅助函数：获取所有匹配的键
+async function scanKeys(pattern) {
+    const keys = [];
+    let cursor = '0';
+    do {
+        const reply = await redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
+        cursor = reply[0];
+        keys.push(...reply[1]);
+    } while (cursor !== '0');
+    return keys;
+}
+
 export default async function handler(req, res) {
     const url = new URL(req.url, `http://${req.headers.host}`);
     let action;
@@ -28,7 +40,7 @@ export default async function handler(req, res) {
         return res.status(200).json({ online: !!exists });
     }
 
-    // 获取语音设置（供前台端使用）
+    // 获取语音设置
     if (action === 'get_voice' && req.method === 'GET') {
         const voice = await redis.get('config:voice') || '';
         return res.status(200).json({ voice });
@@ -36,7 +48,7 @@ export default async function handler(req, res) {
 
     const password = req.method === 'GET' ? url.searchParams.get('password') : (req.body?.password || '');
 
-    // 客人端查询聊天记录允许 guest 密码
+    // 聊天消息允许 guest 密码
     if (action === 'chat_messages' && req.method === 'GET') {
         if (password !== 'guest' && !(await checkPassword(password))) {
             return res.status(403).json({ error: '密码错误' });
@@ -51,7 +63,7 @@ export default async function handler(req, res) {
         // 主看板
         if (action === 'main' && req.method === 'GET') {
             const today = new Date().toISOString().slice(0, 10);
-            const chatKeys = await redis.keys('chat:*');
+            const chatKeys = await scanKeys('chat:*');
             const rooms = new Set();
             for (const key of chatKeys) {
                 const raw = await redis.get(key);
@@ -62,7 +74,7 @@ export default async function handler(req, res) {
                     } catch (e) {}
                 }
             }
-            const notifKeys = await redis.keys('notification:*');
+            const notifKeys = await scanKeys('notification:*');
             const notifications = [];
             for (const key of notifKeys) {
                 const raw = await redis.get(key);
@@ -78,7 +90,7 @@ export default async function handler(req, res) {
         if (action === 'notifications' && req.method === 'GET') {
             const type = url.searchParams.get('type');
             const history = url.searchParams.get('history');
-            const keys = await redis.keys('notification:*');
+            const keys = await scanKeys('notification:*');
             const items = [];
             for (const key of keys) {
                 const raw = await redis.get(key);
@@ -106,9 +118,9 @@ export default async function handler(req, res) {
             return res.status(200).json({ success: true });
         }
 
-        // 接管房间列表（返回 groupId）
+        // 接管房间列表
         if (action === 'takeover_rooms' && req.method === 'GET') {
-            const keys = await redis.keys('takeover:*');
+            const keys = await scanKeys('takeover:*');
             const rooms = [];
             for (const key of keys) {
                 const data = await redis.get(key);
@@ -116,7 +128,7 @@ export default async function handler(req, res) {
                     const takeover = typeof data === 'string' ? JSON.parse(data) : data;
                     if (takeover.active) {
                         const r = key.replace('takeover:', '');
-                        const msgKeys = await redis.keys(`pending_msg:${r}:*`);
+                        const msgKeys = await scanKeys(`pending_msg:${r}:*`);
                         rooms.push({
                             room: r,
                             unread: msgKeys.length,
@@ -137,7 +149,7 @@ export default async function handler(req, res) {
 
             if (!room) return res.status(400).json({ error: '缺少房间号' });
 
-            const chatKeys = await redis.keys('chat:*');
+            const chatKeys = await scanKeys('chat:*');
             const messages = [];
 
             for (const key of chatKeys) {
@@ -163,7 +175,7 @@ export default async function handler(req, res) {
                 } catch (e) {}
             }
 
-            const pendingKeys = await redis.keys(`pending_msg:${room}:*`);
+            const pendingKeys = await scanKeys(`pending_msg:${room}:*`);
             for (const key of pendingKeys) {
                 const data = await redis.get(key);
                 if (!data) continue;
@@ -194,7 +206,7 @@ export default async function handler(req, res) {
                 sender: 'frontdesk',
                 time: new Date().toISOString()
             }), 'EX', 60 * 60 * 24 * 90);
-            const pendingKeys = await redis.keys(`pending_msg:${room}:*`);
+            const pendingKeys = await scanKeys(`pending_msg:${room}:*`);
             for (const key of pendingKeys) await redis.del(key);
             return res.status(200).json({ success: true });
         }
@@ -222,7 +234,7 @@ export default async function handler(req, res) {
 
         // 房间二维码列表
         if (action === 'rooms' && req.method === 'GET') {
-            const keys = await redis.keys('room:*');
+            const keys = await scanKeys('room:*');
             const rooms = [];
             for (const key of keys) {
                 const data = await redis.get(key);
@@ -250,7 +262,7 @@ export default async function handler(req, res) {
 
         // 临时二维码管理
         if (action === 'temp_qrs' && req.method === 'GET') {
-            const keys = await redis.keys('temp_qr:*');
+            const keys = await scanKeys('temp_qr:*');
             const qrs = [];
             for (const key of keys) {
                 const data = await redis.get(key);
