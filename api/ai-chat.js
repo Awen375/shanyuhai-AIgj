@@ -1,9 +1,6 @@
-import { Redis } from '@upstash/redis';
+import Redis from 'ioredis';
 
-const redis = new Redis({
-  url: process.env.KV_REST_API_URL,
-  token: process.env.KV_REST_API_TOKEN,
-});
+const redis = new Redis(process.env.REDIS_URL || 'redis://:Cjw1314520%40@47.243.170.72:6379');
 
 const hotelInfo = `
 【民宿定位与导航】
