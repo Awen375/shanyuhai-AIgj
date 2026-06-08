@@ -172,8 +172,14 @@ async function matchKeywords(text) {
 }
 
 async function isFrontdeskOnline() {
-    const heartbeat = await redis.get('heartbeat:frontdesk');
-    return !!heartbeat;
+    try {
+        const heartbeat = await redis.get('heartbeat:frontdesk');
+        console.log('心跳检查结果:', heartbeat);
+        return !!heartbeat;
+    } catch (err) {
+        console.error('检查前台在线状态出错:', err);
+        return false;
+    }
 }
 
 export default async function handler(req, res) {
@@ -223,7 +229,7 @@ export default async function handler(req, res) {
 
         let tideHint = isSpringTide ? '近期正值大潮，退潮幅度大，赶海收获会更多哦！' : '目前是小潮期，海滩暴露面积较小，但依然可以享受赶海乐趣。';
 
-        // ★ 计算今日/明日日出时间
+        // 计算今日/明日日出时间
         function getSunriseTime(date) {
             const lat = 26.89;
             const lng = 120.16;
@@ -246,7 +252,6 @@ export default async function handler(req, res) {
 【明日日出时间】北京时间 ${tomorrowSunrise.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })}
 `;
 
-        // ★ 计算入住天数
         let stayInfo = '';
         if (checkin && checkout) {
             const checkinDate = new Date(
@@ -374,41 +379,32 @@ ${knowledgeText || '暂无'}`;
         if (matched && matched.type === 'room_msg') {
             const online = await isFrontdeskOnline();
             console.log('前台在线状态:', online);
+            console.log('当前小时:', hour, '是否上班时间:', (hour >= 8 && hour < 23));
 
             const isWorkingHour = (hour >= 8 && hour < 23);
 
-            if (isWorkingHour) {
-                if (online) {
-                    await redis.set(`notification:${Date.now()}`, JSON.stringify({
-                        room: room || '未知', question, reply: '', keyword: matched.keyword,
-                        type: 'room_msg', time: new Date().toISOString(), status: 'pending', groupId: groupId || ''
-                    }));
-                    await redis.set(`takeover:${room}`, JSON.stringify({
-                        active: true, startTime: Date.now(), lastGuestMsg: Date.now(), groupId: groupId || ''
-                    }));
-                    console.log(`接管房间已设置: takeover:${room}，群组：${groupId || '无'}`);
-                    return res.status(200).json({ reply: '好的您稍等，我现在就通知前台的小伙伴与您联系，您不要离开正在接通中请稍候......' });
-                } else {
-                    return res.status(200).json({
-                        reply: '接通失败~当前前台的小伙伴不在线，您可以稍后再试，或者拨打前台电话联系前台。前台电话为：0593-8850999'
-                    });
-                }
-            } else {
-                if (online) {
-                    await redis.set(`notification:${Date.now()}`, JSON.stringify({
-                        room: room || '未知', question, reply: '', keyword: matched.keyword,
-                        type: 'room_msg', time: new Date().toISOString(), status: 'pending', groupId: groupId || ''
-                    }));
-                    await redis.set(`takeover:${room}`, JSON.stringify({
-                        active: true, startTime: Date.now(), lastGuestMsg: Date.now(), groupId: groupId || ''
-                    }));
-                    console.log(`接管房间已设置（下班时间前台在线）: takeover:${room}，群组：${groupId || '无'}`);
-                    return res.status(200).json({ reply: '好的您稍等，我现在就通知前台的小伙伴与您联系，您不要离开正在接通中请稍候......' });
-                } else {
-                    return res.status(200).json({
-                        reply: '我们前台的小伙伴们都下班啦！目前是下班时间，有什么问题您可以先问我我可以帮您处理的。上班时间：8:00-23:00'
-                    });
-                }
+            // ★ 强制写入接管（用于调试，正式环境改为条件判断）
+            // 无论在线与否，先写入接管看看能否成功
+            try {
+                const takeoverKey = `takeover:${room}`;
+                const takeoverValue = JSON.stringify({
+                    active: true, startTime: Date.now(), lastGuestMsg: Date.now(), groupId: groupId || ''
+                });
+                console.log('准备写入接管:', takeoverKey, takeoverValue);
+                await redis.set(takeoverKey, takeoverValue);
+                console.log('接管写入成功');
+                
+                // 同时写入通知
+                await redis.set(`notification:${Date.now()}`, JSON.stringify({
+                    room: room || '未知', question, reply: '', keyword: matched.keyword,
+                    type: 'room_msg', time: new Date().toISOString(), status: 'pending', groupId: groupId || ''
+                }));
+                console.log('通知写入成功');
+                
+                return res.status(200).json({ reply: '好的您稍等，我现在就通知前台的小伙伴与您联系，您不要离开正在接通中请稍候......' });
+            } catch (writeError) {
+                console.error('接管或通知写入失败:', writeError);
+                return res.status(500).json({ error: '接管设置失败' });
             }
         }
 
@@ -480,6 +476,7 @@ ${knowledgeText || '暂无'}`;
 
         return res.status(200).json({ reply });
     } catch (err) {
+        console.error('AI处理错误:', err);
         return res.status(500).json({ error: '服务错误' });
     }
 }
