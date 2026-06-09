@@ -1,6 +1,14 @@
 import Redis from 'ioredis';
 
-const redis = new Redis(process.env.REDIS_URL || 'redis://:Cjw1314520%40@47.243.170.72:6379');
+// ★ 修改后的 Redis 连接配置（支持自动重连、超时等）
+const redis = new Redis({
+    host: '47.243.170.72',
+    port: 6379,
+    password: 'Cjw1314520@',
+    connectTimeout: 5000,
+    retryStrategy: (times) => Math.min(times * 100, 3000),
+    maxRetriesPerRequest: 3
+});
 
 const hotelInfo = `
 【民宿定位与导航】
@@ -145,7 +153,6 @@ async function getAISettings() {
     };
 }
 
-// ★ 修改后的关键词匹配：强制将 urgent 视为 room_msg，并删除紧急通知相关逻辑
 async function matchKeywords(text) {
     const keywordsData = await redis.get('config:keywords');
     if (!keywordsData) return null;
@@ -157,18 +164,15 @@ async function matchKeywords(text) {
 
     for (const item of list) {
         if (text.includes(item.keyword)) {
-            // 如果旧数据中还有 urgent 类型，强制转为 room_msg
             if (item.type === 'urgent') {
                 item.type = 'room_msg';
                 console.log('检测到旧版 urgent 关键词，已自动转为 room_msg');
             }
-
             if (item.type === 'room_msg') {
                 matchedRoomMsg = item;
-                break; // 最高优先级，找到即停止
+                break;
             } else if (item.type === 'other') {
                 matchedOther = item;
-                // 继续查找，因为 room_msg 可能还未出现
             }
         }
     }
@@ -427,27 +431,51 @@ ${knowledgeText || '暂无'}`;
             if (instruction) systemPrompt += `\n【回复指示】请严格遵循以下要求来调整回复的语气、风格或内容：${instruction}`;
         }
 
-        const response = await fetch('https://ark.cn-beijing.volces.com/api/v3/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${process.env.VOLCENGINE_API_KEY}`
-            },
-            body: JSON.stringify({
-                model: 'ep-20260606133152-72n4l',
-                messages: [
-                    { role: 'system', content: systemPrompt },
-                    { role: 'user', content: question }
-                ],
-                temperature: 0.8,
-                max_tokens: 800
-            })
-        });
+        // ★ 调用火山方舟 API，增加详细错误捕获
+        let response;
+        try {
+            response = await fetch('https://ark.cn-beijing.volces.com/api/v3/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${process.env.VOLCENGINE_API_KEY}`
+                },
+                body: JSON.stringify({
+                    model: 'ep-20260606133152-72n4l',
+                    messages: [
+                        { role: 'system', content: systemPrompt },
+                        { role: 'user', content: question }
+                    ],
+                    temperature: 0.8,
+                    max_tokens: 800
+                })
+            });
+        } catch (fetchError) {
+            console.error('火山方舟 API 请求失败:', fetchError);
+            return res.status(500).json({ error: 'AI服务连接失败' });
+        }
 
-        const data = await response.json();
-        if (data.error) return res.status(500).json({ error: 'AI异常：' + data.error.message });
+        let data;
+        try {
+            data = await response.json();
+        } catch (parseError) {
+            console.error('火山方舟 API 返回非 JSON:', parseError);
+            const text = await response.text();
+            console.error('原始返回内容:', text);
+            return res.status(500).json({ error: 'AI返回格式错误' });
+        }
+
+        if (data.error) {
+            console.error('火山方舟 API 业务错误:', data.error);
+            return res.status(500).json({ error: 'AI异常：' + data.error.message });
+        }
+
         const content = data?.choices?.[0]?.message?.content;
-        if (!content) return res.status(500).json({ error: 'AI无返回' });
+        if (!content) {
+            console.error('AI无返回内容，完整响应:', JSON.stringify(data));
+            return res.status(500).json({ error: 'AI无返回' });
+        }
+
         let reply = content;
 
         const unsurePhrases = ['不太确定', '无法回答', '这个我不太清楚', '抱歉，我暂时无法',
@@ -483,7 +511,8 @@ ${knowledgeText || '暂无'}`;
 
         return res.status(200).json({ reply });
     } catch (err) {
-        console.error('AI处理错误:', err);
+        // ★ 全局异常捕获，打印完整错误堆栈
+        console.error('AI处理未捕获异常:', err);
         return res.status(500).json({ error: '服务错误' });
     }
 }
