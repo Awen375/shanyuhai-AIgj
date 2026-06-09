@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>山予海AI智能管家</title>
+    <link rel="icon" type="image/png" href="/logo.jpg">
     <style>
         body { font-family: 'PingFang SC','Microsoft YaHei',sans-serif; background: #f0f4f8; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
         .chat-container { max-width: 600px; width: 100%; background: white; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); display: flex; flex-direction: column; height: 90vh; }
@@ -147,16 +148,25 @@
         document.getElementById('welcomeScreen').innerHTML = '<h3>参数错误</h3>';
     }
 
-    // ========== 消息提示音 ==========
-    const notificationSound = new Audio('/message.mp3');  // 确保MP3文件位于根目录
+    // ========== 消息提示音（每次创建新对象，兼容移动端） ==========
     let lastSoundTime = 0;
 
     function playMessageSound() {
         const now = Date.now();
-        if (now - lastSoundTime < 3000) return;  // 3秒内不重复播放
+        if (now - lastSoundTime < 3000) return;   // 3秒内不重复播放
         lastSoundTime = now;
-        notificationSound.currentTime = 0;
-        notificationSound.play().catch(() => {});
+
+        // 每次创建全新的 Audio 对象，避免移动端状态问题
+        const sound = new Audio('/message.mp3');
+        sound.play().then(() => {
+            // 播放成功后自动释放内存
+            sound.addEventListener('ended', () => {
+                sound.remove();
+            });
+        }).catch(err => {
+            console.log('提示音播放失败:', err);
+            sound.remove();
+        });
     }
 
     let lastMessageTime = null;
@@ -192,13 +202,6 @@
     function startJourney() {
         document.getElementById('welcomeScreen').style.display = 'none';
         document.getElementById('loadingMsg').style.display = 'flex';
-        
-        // ★ 解锁手机端自动播放限制
-        notificationSound.play().then(() => {
-            notificationSound.pause();
-            notificationSound.currentTime = 0;
-        }).catch(() => {});
-        
         verifyRoom();
     }
 
