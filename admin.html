@@ -216,6 +216,8 @@
     <script>
         const ADMIN_PASSWORD = 'zjm1314520';
         const token = () => localStorage.getItem('admin_token');
+        // ★ 修改为自建服务器 API 地址
+        const API_BASE = 'https://api.shanyhgj.top';
 
         function login() {
             if (document.getElementById('password').value === ADMIN_PASSWORD) {
@@ -246,7 +248,7 @@
 
         // ===== 房间管理 =====
         async function loadRooms() {
-            const res = await fetch('/api/admin/rooms', { headers: { 'x-admin-token': token() } });
+            const res = await fetch(`${API_BASE}/api/admin/rooms`, { headers: { 'x-admin-token': token() } });
             const data = await res.json();
             const tbody = document.querySelector('#roomTable tbody');
             tbody.innerHTML = '';
@@ -271,7 +273,7 @@
             const id = document.getElementById('newRoomId').value.trim();
             const name = document.getElementById('newRoomName').value.trim();
             if (!id) return alert('请输入房间号');
-            await fetch('/api/admin/rooms', {
+            await fetch(`${API_BASE}/api/admin/rooms`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'x-admin-token': token() },
                 body: JSON.stringify({ id, name })
@@ -283,7 +285,7 @@
 
         async function refreshRoom(id) {
             if (!confirm('更新二维码后，旧二维码将立即失效。确定继续？')) return;
-            const res = await fetch('/api/admin/rooms/refresh', {
+            const res = await fetch(`${API_BASE}/api/admin/rooms/refresh`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'x-admin-token': token() },
                 body: JSON.stringify({ id })
@@ -302,7 +304,7 @@
 
         async function deleteRoom(id) {
             if (!confirm('确定删除房间 ' + id + '？')) return;
-            await fetch('/api/admin/rooms', {
+            await fetch(`${API_BASE}/api/admin/rooms`, {
                 method: 'DELETE',
                 headers: { 'Content-Type': 'application/json', 'x-admin-token': token() },
                 body: JSON.stringify({ id })
@@ -313,14 +315,13 @@
         function showQR(roomId, url) {
             document.getElementById('qrRoom').innerText = roomId;
             document.getElementById('qrUrl').innerText = url;
-            // 强制刷新图片：添加随机参数避免浏览器缓存
             document.getElementById('qrImage').src = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(url)}&rnd=${Math.random()}`;
             document.getElementById('qrModal').style.display = 'flex';
         }
 
         // ===== AI设置 =====
         async function loadAISettings() {
-            const res = await fetch('/api/admin/ai-settings', { headers: { 'x-admin-token': token() } });
+            const res = await fetch(`${API_BASE}/api/admin/ai-settings`, { headers: { 'x-admin-token': token() } });
             const data = await res.json();
             document.getElementById('aiName').value = data.name || '小予';
             document.getElementById('fallbackReply').value = data.fallbackReply || '';
@@ -331,7 +332,7 @@
             const name = document.getElementById('aiName').value.trim();
             const fallbackReply = document.getElementById('fallbackReply').value.trim();
             const fallbackNote = document.getElementById('fallbackNote').value.trim();
-            await fetch('/api/admin/ai-settings', {
+            await fetch(`${API_BASE}/api/admin/ai-settings`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'x-admin-token': token() },
                 body: JSON.stringify({ name, fallbackReply, fallbackNote })
@@ -341,7 +342,7 @@
 
         // ===== 未解决问题 =====
         async function loadUnanswered() {
-            const res = await fetch('/api/admin/unanswered', { headers: { 'x-admin-token': token() } });
+            const res = await fetch(`${API_BASE}/api/admin/unanswered`, { headers: { 'x-admin-token': token() } });
             const data = await res.json();
             const tbody = document.querySelector('#unansweredTable tbody');
             tbody.innerHTML = '';
@@ -368,7 +369,7 @@
             const taskId = document.getElementById('taskId').value;
             const answer = document.getElementById('answerText').value.trim();
             if (!answer) return alert('请输入答案');
-            await fetch('/api/admin/unanswered', {
+            await fetch(`${API_BASE}/api/admin/unanswered`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'x-admin-token': token() },
                 body: JSON.stringify({ taskId, answer })
@@ -379,7 +380,7 @@
 
         // ===== 聊天记录 =====
         async function loadChatSummary() {
-            const res = await fetch('/api/admin/chat-summary', { headers: { 'x-admin-token': token() } });
+            const res = await fetch(`${API_BASE}/api/admin/chat-summary`, { headers: { 'x-admin-token': token() } });
             const data = await res.json();
             const tbody = document.querySelector('#chatSummaryTable tbody');
             tbody.innerHTML = '';
@@ -399,7 +400,7 @@
 
         async function openRoomChat(room) {
             document.getElementById('detailRoom').innerText = room;
-            const res = await fetch(`/api/admin/chatlogs?room=${room}`, { headers: { 'x-admin-token': token() } });
+            const res = await fetch(`${API_BASE}/api/admin/chatlogs?room=${room}`, { headers: { 'x-admin-token': token() } });
             const data = await res.json();
             const dates = new Set();
             data.logs.forEach(log => {
@@ -418,7 +419,7 @@
         async function loadRoomDetail() {
             const room = document.getElementById('detailRoom').innerText;
             const date = document.getElementById('detailDateSelect').value;
-            const res = await fetch(`/api/admin/chatlogs?room=${room}&date=${date}`, { headers: { 'x-admin-token': token() } });
+            const res = await fetch(`${API_BASE}/api/admin/chatlogs?room=${room}&date=${date}`, { headers: { 'x-admin-token': token() } });
             const data = await res.json();
             const tbody = document.getElementById('detailTableBody');
             tbody.innerHTML = '';
@@ -438,7 +439,7 @@
 
         async function deleteChatLog(id) {
             if (!confirm('确定删除这条聊天记录？')) return;
-            await fetch('/api/admin/chatlogs', {
+            await fetch(`${API_BASE}/api/admin/chatlogs`, {
                 method: 'DELETE',
                 headers: { 'Content-Type': 'application/json', 'x-admin-token': token() },
                 body: JSON.stringify({ id })
@@ -451,7 +452,7 @@
         let keywordsData = [];
 
         async function loadKeywords() {
-            const res = await fetch('/api/admin/keywords', { headers: { 'x-admin-token': token() } });
+            const res = await fetch(`${API_BASE}/api/admin/keywords`, { headers: { 'x-admin-token': token() } });
             const data = await res.json();
             keywordsData = data.keywords || [];
             renderKeywords();
@@ -492,7 +493,7 @@
 
         async function saveKeywords() {
             const keywords = keywordsData.filter(k => k.keyword.trim());
-            await fetch('/api/admin/keywords', {
+            await fetch(`${API_BASE}/api/admin/keywords`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'x-admin-token': token() },
                 body: JSON.stringify({ keywords })
@@ -521,7 +522,7 @@
 
         async function loadSavedVoice() {
             try {
-                const res = await fetch('/api/admin/voice', { headers: { 'x-admin-token': token() } });
+                const res = await fetch(`${API_BASE}/api/admin/voice`, { headers: { 'x-admin-token': token() } });
                 const data = await res.json();
                 if (data.voice) {
                     const select = document.getElementById('voiceSelect');
@@ -546,7 +547,7 @@
         async function saveVoice() {
             const voice = document.getElementById('voiceSelect').value;
             if (!voice) return alert('请选择一个语音');
-            await fetch('/api/admin/voice', {
+            await fetch(`${API_BASE}/api/admin/voice`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'x-admin-token': token() },
                 body: JSON.stringify({ voice })
@@ -561,7 +562,7 @@
         async function checkNotifications() {
             if (!token()) return;
             try {
-                const res = await fetch('/api/admin/notifications', { headers: { 'x-admin-token': token() } });
+                const res = await fetch(`${API_BASE}/api/admin/notifications`, { headers: { 'x-admin-token': token() } });
                 const data = await res.json();
                 const count = data.notifications ? data.notifications.length : 0;
                 const badge = document.getElementById('notifBadge');
@@ -599,7 +600,7 @@
         }
 
         async function loadNotifList() {
-            const res = await fetch('/api/admin/notifications', { headers: { 'x-admin-token': token() } });
+            const res = await fetch(`${API_BASE}/api/admin/notifications`, { headers: { 'x-admin-token': token() } });
             const data = await res.json();
             const tbody = document.querySelector('#notifTable tbody');
             tbody.innerHTML = '';
@@ -621,7 +622,7 @@
 
         async function handleNotif(id) {
             if (!confirm('确定标记为已处理？')) return;
-            await fetch('/api/admin/notifications', {
+            await fetch(`${API_BASE}/api/admin/notifications`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'x-admin-token': token() },
                 body: JSON.stringify({ id })
@@ -632,7 +633,7 @@
 
         async function showHistory() {
             document.getElementById('historyModal').style.display = 'flex';
-            const res = await fetch('/api/admin/notifications-history', { headers: { 'x-admin-token': token() } });
+            const res = await fetch(`${API_BASE}/api/admin/notifications-history`, { headers: { 'x-admin-token': token() } });
             const data = await res.json();
             const tbody = document.querySelector('#historyTable tbody');
             tbody.innerHTML = '';
@@ -654,7 +655,7 @@
         // 前台端设置
         async function showFrontdeskSettings() {
             document.getElementById('frontdeskModal').style.display = 'flex';
-            const res = await fetch('/api/admin/frontdesk-password', { headers: { 'x-admin-token': token() } });
+            const res = await fetch(`${API_BASE}/api/admin/frontdesk-password`, { headers: { 'x-admin-token': token() } });
             const data = await res.json();
             document.getElementById('frontdeskPassword').value = data.password || '1234';
             document.getElementById('currentFrontPwd').innerText = data.password || '1234';
@@ -663,7 +664,7 @@
         async function saveFrontdeskPassword() {
             const password = document.getElementById('frontdeskPassword').value.trim();
             if (!password) return alert('密码不能为空');
-            await fetch('/api/admin/frontdesk-password', {
+            await fetch(`${API_BASE}/api/admin/frontdesk-password`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'x-admin-token': token() },
                 body: JSON.stringify({ password })
@@ -676,7 +677,7 @@
             window.open('/frontdesk.html', '_blank');
         }
 
-        setInterval(checkNotifications, 10000);
+        setInterval(checkNotifications, 30000); // 降低轮询频率
 
         function loadAll() {
             loadRooms();
