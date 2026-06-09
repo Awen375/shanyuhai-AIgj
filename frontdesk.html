@@ -70,7 +70,7 @@
 
     <div id="dashboardPanel" class="dashboard hidden">
         <button class="btn-qr" onclick="showAllTempQRs()">📱 临时二维码</button>
-       <img src="/aimx.jpg" alt="logo" style="display: block; margin: 0 auto; width: 80px; height: auto;" />
+        <img src="/aimx.jpg" alt="logo" style="display: block; margin: 0 auto; width: 80px; height: auto;" />
         <h2>山予海AI管家前台端</h2>
         <div class="card-row">
             <div class="type-card" onclick="openUsageList()"><div class="label">今日AI管家使用</div><div class="count" id="cnt_usage">0</div></div>
@@ -121,14 +121,13 @@
             <input type="text" id="timeRoomId" placeholder="例如 101">
         </div>
         <div class="time-input">
-            <label>入住日期：</label>
-            <input type="date" id="checkinDate">
+            <label>入住时间：</label>
+            <input type="datetime-local" id="checkinTime">
         </div>
         <div class="time-input">
-            <label>退房日期：</label>
-            <input type="date" id="checkoutDate">
+            <label>退房时间：</label>
+            <input type="datetime-local" id="checkoutTime">
         </div>
-        <p style="color:#888;font-size:13px;margin-top:10px;">入住时间自动设为 7:00，退房时间自动设为 12:00</p>
         <button onclick="generateTimeQR()" class="success">生成二维码</button>
         <button onclick="document.getElementById('timeQRForm').style.display='none'">取消</button>
         <div id="timeQRResult" style="margin-top:20px; display:flex; flex-wrap:wrap; justify-content:center;"></div>
@@ -162,9 +161,10 @@
     // ===== 全局变量 =====
     let dashboardData = null, currentRoom = null, takeoverRooms = [], alertTimer = null, chatActive = false;
     let currentGroupId = '';
-    let frontVoiceName = '';  // 存储后台设置的语音名称
+    let frontVoiceName = '';
     const PASSWORD = () => localStorage.getItem('front_password') || '';
-    const BASE = '/api/frontdesk';
+    // ★ 修改为自建服务器 API 地址
+    const BASE = 'https://api.shanyhgj.top/api/frontdesk';
     let quickReplies = JSON.parse(localStorage.getItem('quickReplies') || '[]');
     let frontMessageKeys = new Set();
 
@@ -177,7 +177,6 @@
         if (alertTimer) clearInterval(alertTimer);
     });
 
-    // 语音提醒（使用后台设置的语音）
     function speak(text) {
         if ('speechSynthesis' in window) {
             const utter = new SpeechSynthesisUtterance(text);
@@ -202,7 +201,7 @@
     function sendHeartbeat() {
         fetch(`${BASE}?action=heartbeat`).catch(() => {});
     }
-    setInterval(sendHeartbeat, 30000);
+    setInterval(sendHeartbeat, 60000);
     sendHeartbeat();
 
     async function login() {
@@ -218,7 +217,6 @@
             currentRoom = null; chatActive = false; stopAlert();
             dashboardData = data;
 
-            // 获取后台设置的语音
             try {
                 const voiceRes = await fetch(`${BASE}?password=${encodeURIComponent(pass)}&action=get_voice`);
                 const voiceData = await voiceRes.json();
@@ -324,7 +322,6 @@
         chatActive = true; stopAlert();
     }
 
-    // 消息加载：isInitial 为 true 时清空重建，否则增量追加
     async function loadRoomMessages(room, isInitial = true) {
         let url = `${BASE}?password=${encodeURIComponent(PASSWORD())}&action=chat_messages&room=${room}`;
         if (currentGroupId) url += `&groupId=${encodeURIComponent(currentGroupId)}`;
@@ -382,7 +379,6 @@
         }
     }
 
-    // 历史聊天
     async function showChatHistory() {
         if (!currentRoom) return;
         document.getElementById('historyRoomTitle').innerText = currentRoom;
@@ -402,7 +398,6 @@
         });
     }
 
-    // 快捷回复
     function toggleQuickReply() {
         document.getElementById('quickReplyModal').style.display = 'flex';
         renderQuickReplies();
@@ -436,7 +431,6 @@
         renderQuickReplies();
     }
 
-    // ===== 通知处理 =====
     async function openNotifyList(type) {
         document.getElementById('listTitle').innerText = getTypeName(type) + ' 待处理列表';
         document.getElementById('historyBtn').style.display = 'inline-block';
@@ -488,7 +482,6 @@
     }
     function getTypeName(t) { const m = { usage:'今日使用', room_msg:'房客消息', clean:'清扫任务', car:'用车服务', food:'订餐服务', extend:'续住需求' }; return m[t]||''; }
 
-    // ===== 临时二维码管理 =====
     async function showAllTempQRs() {
         const res = await fetch(`${BASE}?password=${encodeURIComponent(PASSWORD())}&action=temp_qrs`);
         const data = await res.json();
@@ -537,21 +530,20 @@
         document.getElementById('timeQRResult').innerHTML = '';
     }
 
-    // ★ 修改后的生成函数：使用日期选择器，固定入住7:00，退房12:00
     async function generateTimeQR() {
         const roomId = document.getElementById('timeRoomId').value.trim();
-        const checkinDate = document.getElementById('checkinDate').value;   // YYYY-MM-DD
-        const checkoutDate = document.getElementById('checkoutDate').value; // YYYY-MM-DD
-        if (!roomId || !checkinDate || !checkoutDate) return alert('请填写完整信息');
+        const checkin = document.getElementById('checkinTime').value;
+        const checkout = document.getElementById('checkoutTime').value;
+        if (!roomId || !checkin || !checkout) return alert('请填写完整信息');
 
         const roomRes = await fetch(`${BASE}?password=${encodeURIComponent(PASSWORD())}&action=rooms`);
         const roomData = await roomRes.json();
         const room = roomData.rooms?.find(r => r.id === roomId);
         if (!room) return alert('房间不存在，请先在后台创建房间');
 
-        // 将日期转换为 YYYYMMDDHHmm 格式
-        const checkinStr = checkinDate.replace(/-/g, '') + '0700';   // 入住日 7:00
-        const checkoutStr = checkoutDate.replace(/-/g, '') + '1200'; // 退房日 12:00
+        const formatTime = (dt) => dt.replace(/[-:]/g, '').replace('T', '').substring(0,12);
+        const checkinStr = formatTime(checkin);
+        const checkoutStr = formatTime(checkout);
 
         const res = await fetch(`${BASE}`, {
             method: 'POST',
@@ -575,21 +567,13 @@
         }
     }
 
-    function saveQR(id) {
-        // 保留兼容性
-    }
-
-    async function refreshRoomQR(id) {
-        // 保留兼容性
-    }
-
     function startTakeoverCheck() {
         setInterval(() => {
             if (!document.getElementById('dashboardPanel').classList.contains('hidden')) {
                 loadTakeoverRooms();
                 if (currentRoom) loadRoomMessages(currentRoom, false);
             }
-        }, 5000);
+        }, 15000);
     }
     function startAutoRefresh() {
         setInterval(async () => {
