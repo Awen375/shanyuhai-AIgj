@@ -34,9 +34,7 @@
         .quick-btn { padding: 8px 16px; background: #f0f4f8; border: 1px solid #ddd; border-radius: 20px; font-size: 14px; color: #333; cursor: pointer; transition: 0.2s; white-space: nowrap; }
         .quick-btn:hover { background: #e8f4fd; border-color: #1e90ff; color: #0b4f6c; }
 
-        /* 导航按钮样式 */
         .nav-btn { display: inline-block; margin-top: 5px; padding: 8px 16px; background: #1e90ff; color: white; border-radius: 20px; text-decoration: none; font-size: 14px; cursor: pointer; border: none; }
-        /* 导航选择弹出框 */
         .nav-popup { display: none; position: absolute; bottom: 120%; left: 50%; transform: translateX(-50%); background: white; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); padding: 10px; z-index: 10; white-space: nowrap; }
         .nav-popup a { display: block; padding: 8px 16px; text-decoration: none; color: #333; border-radius: 8px; margin: 3px 0; font-size: 14px; }
         .nav-popup a:hover { background: #f0f4f8; }
@@ -46,7 +44,7 @@
 <body>
 <div class="chat-container" id="chatContainer">
     <div id="welcomeScreen" class="welcome-screen">
-        <img src="/aimx.jpg" alt="logo" style="width: 120px; height: auto; display: block; margin: 0 auto;" />
+        <img src="/aimx.jpg" alt="logo" style="width: 80px; height: auto; display: block; margin: 0 auto;" />
         <h1>山予海AI管家</h1>
         <p>尊贵的山予海房客您好<br>我是您专属的AI管家<br>点击下方按钮开始我们的对话吧！</p>
         <button onclick="startJourney()">✨ 开始智能之旅</button>
@@ -80,7 +78,7 @@
             <input type="text" id="messageInput" placeholder="输入您的问题...">
             <button id="sendBtn" onclick="sendMessage()">发送</button>
         </div>
-        <div class="notice">需要人工帮助？请回复"叫前台"</div>
+        <div class="notice">需要人工帮助？请回复"呼叫前台"</div>
         <div class="support-text">本程序由，山予海AI大模型团队提供技术支持</div>
     </div>
 </div>
@@ -92,6 +90,8 @@
     const checkin = urlParams.get('checkin');
     const checkout = urlParams.get('checkout');
     const groupId = urlParams.get('groupId') || '';
+    // ★ 自建 API 基础地址
+    const API_BASE = 'https://api.shanyhgj.top';
 
     if (!currentRoom || !token) {
         document.getElementById('welcomeScreen').innerHTML = '<h3>参数错误</h3>';
@@ -113,7 +113,7 @@
 
     async function verifyRoom() {
         try {
-            let url = `/api/check_room?room=${currentRoom}&token=${token}`;
+            let url = `${API_BASE}/api/check_room?room=${currentRoom}&token=${token}`;
             if (checkin && checkout) url += `&checkin=${checkin}&checkout=${checkout}`;
             if (groupId) url += `&groupId=${encodeURIComponent(groupId)}`;
             const res = await fetch(url);
@@ -160,7 +160,7 @@
 
     async function checkFrontdeskStatus() {
         try {
-            const res = await fetch(`/api/frontdesk?action=online_status`);
+            const res = await fetch(`${API_BASE}/api/frontdesk?action=online_status`);
             const data = await res.json();
             const online = data.online;
             const dot = document.getElementById('statusDot');
@@ -202,7 +202,7 @@
         if (!customText) input.value = '';
 
         try {
-            const res = await fetch('/api/ai-chat', {
+            const res = await fetch(`${API_BASE}/api/ai-chat`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
@@ -231,15 +231,12 @@
         }
     }
 
-    // 将文本中的导航链接替换为统一按钮
     function renderNavigationButtons(text) {
         const urlRegex = /(https?:\/\/[^\s]+)/g;
         const links = text.match(urlRegex);
         if (!links || links.length === 0) return text;
 
-        // 移除所有链接，替换为占位符
         let cleanText = text.replace(urlRegex, '');
-        // 如果只有高德和百度链接，生成统一按钮
         const amapLink = links.find(l => l.includes('amap') || l.includes('uri.amap'));
         const bmapLink = links.find(l => l.includes('baidu') || l.includes('api.map.baidu'));
 
@@ -255,16 +252,13 @@
         return cleanText + buttonHtml;
     }
 
-    // 切换导航弹出框的显示
     window.toggleNavPopup = function(btn) {
         const popup = btn.nextElementSibling;
         if (!popup) return;
-        // 关闭其他所有弹出框
         document.querySelectorAll('.nav-popup').forEach(p => { if (p !== popup) p.style.display = 'none'; });
         popup.style.display = popup.style.display === 'block' ? 'none' : 'block';
     };
 
-    // 点击其他地方关闭弹出框
     document.addEventListener('click', function(e) {
         if (!e.target.closest('.nav-btn-wrapper')) {
             document.querySelectorAll('.nav-popup').forEach(p => p.style.display = 'none');
@@ -289,11 +283,8 @@
         const chatBox = document.getElementById('chatMessages');
         const msgDiv = document.createElement('div');
         msgDiv.className = `message ${sender}`;
-
-        // 处理导航链接
         const htmlContent = renderNavigationButtons(text);
         msgDiv.innerHTML = `<div class="bubble">${htmlContent}</div>`;
-
         chatBox.appendChild(msgDiv);
         chatBox.scrollTop = chatBox.scrollHeight;
 
@@ -320,7 +311,7 @@
 
     async function initialLoad() {
         try {
-            let url = `/api/frontdesk?password=guest&action=chat_messages&room=${encodeURIComponent(currentRoom)}`;
+            let url = `${API_BASE}/api/frontdesk?password=guest&action=chat_messages&room=${encodeURIComponent(currentRoom)}`;
             if (groupId) url += `&groupId=${encodeURIComponent(groupId)}`;
             const res = await fetch(url);
             if (!res.ok) throw new Error('加载失败');
@@ -351,7 +342,7 @@
     async function pollNewMessages() {
         if (!lastMessageTime) return;
         try {
-            let url = `/api/frontdesk?password=guest&action=chat_messages&room=${encodeURIComponent(currentRoom)}`;
+            let url = `${API_BASE}/api/frontdesk?password=guest&action=chat_messages&room=${encodeURIComponent(currentRoom)}`;
             if (groupId) url += `&groupId=${encodeURIComponent(groupId)}`;
             url += `&since=${encodeURIComponent(lastMessageTime)}`;
 
