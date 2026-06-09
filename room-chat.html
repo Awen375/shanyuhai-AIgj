@@ -86,7 +86,7 @@
 <body>
 <div class="chat-container" id="chatContainer">
     <div id="welcomeScreen" class="welcome-screen">
-        <img src="/logo.jpg" alt="logo" class="logo-icon" style="width: 80px; height: auto;" />
+        <img src="/aimx.jpg" alt="logo" class="logo-icon" style="width: 140px; height: auto;" />
         <h1>山予海AI管家</h1>
         <p>尊贵的山予海房客您好<br>我是您专属的AI管家<br>点击下方按钮开始我们的对话吧！</p>
         <button onclick="startJourney()">✨ 开始智能之旅</button>
@@ -192,6 +192,13 @@
     function startJourney() {
         document.getElementById('welcomeScreen').style.display = 'none';
         document.getElementById('loadingMsg').style.display = 'flex';
+        
+        // ★ 解锁手机端自动播放限制
+        notificationSound.play().then(() => {
+            notificationSound.pause();
+            notificationSound.currentTime = 0;
+        }).catch(() => {});
+        
         verifyRoom();
     }
 
