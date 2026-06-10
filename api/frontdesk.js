@@ -1,6 +1,6 @@
 import Redis from 'ioredis';
 
-const redis = new Redis(process.env.REDIS_URL || 'redis://:Cjw1314520@@47.243.170.72:6379');
+const redis = new Redis(process.env.REDIS_URL);
 
 async function checkPassword(password) {
     const saved = await redis.get('config:frontdesk_password') || '1234';

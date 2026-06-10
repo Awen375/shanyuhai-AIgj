@@ -1,14 +1,7 @@
 import Redis from 'ioredis';
 
 // ★ 修改后的 Redis 连接配置（支持自动重连、超时等）
-const redis = new Redis({
-    
-    
-    
-    connectTimeout: 5000,
-    retryStrategy: (times) => Math.min(times * 100, 3000),
-    maxRetriesPerRequest: 3
-});
+const redis = new Redis(process.env.REDIS_URL);
 
 const hotelInfo = `
 【民宿定位与导航】

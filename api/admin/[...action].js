@@ -1,6 +1,6 @@
 import Redis from 'ioredis';
 
-const redis = new Redis(process.env.REDIS_URL || 'redis://:Cjw1314520@@47.243.170.72:6379');
+const redis = new Redis(process.env.REDIS_URL);
 
 const ADMIN_PASSWORD = 'zjm1314520';
 
