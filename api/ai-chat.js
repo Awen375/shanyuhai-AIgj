@@ -1,7 +1,7 @@
 import Redis from 'ioredis';
 
 // ★ 修改后的 Redis 连接配置（支持自动重连、超时等）
-const redis = new Redis(process.env.REDIS_URL);
+const redis = new Redis("redis://:Cjw1314520@127.0.0.1:6379");
 
 const hotelInfo = `
 【民宿定位与导航】

@@ -1,6 +1,6 @@
 import Redis from 'ioredis';
 
-const redis = new Redis(process.env.REDIS_URL);
+const redis = new Redis("redis://:Cjw1314520@127.0.0.1:6379");
 
 export default async function handler(req, res) {
     if (req.method !== 'GET') return res.status(405).json({ error: '只支持GET' });
