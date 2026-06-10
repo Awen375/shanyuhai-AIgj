@@ -2,9 +2,9 @@ import Redis from 'ioredis';
 
 // ★ 修改后的 Redis 连接配置（支持自动重连、超时等）
 const redis = new Redis({
-    host: '47.243.170.72',
-    port: 6379,
-    password: 'Cjw1314520@',
+    
+    
+    
     connectTimeout: 5000,
     retryStrategy: (times) => Math.min(times * 100, 3000),
     maxRetriesPerRequest: 3
